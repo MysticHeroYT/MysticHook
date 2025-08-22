@@ -206,7 +206,8 @@
           username: username,
           avatar_url: avatarUrl,
           tts: tts,
-          embeds: embeds.filter(e => e.title || e.description || (e.fields && e.fields.length > 0)),
+          // Updated filter to be more robust
+          embeds: embeds.filter(e => e.title || e.description || e.url || (e.fields && e.fields.length > 0)),
           components: components.map(c => ({
             type: 1, // ActionRow
             components: [{
