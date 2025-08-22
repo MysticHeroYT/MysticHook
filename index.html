@@ -40,7 +40,7 @@
     );
     
     // Custom SVG icon as a data URL
-    const mysticHookIconUrl = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 C77.6 0 100 22.4 100 50 C100 77.6 77.6 100 50 100 C22.4 100 0 77.6 0 50 C0 22.4 22.4 0 50 0 Z' fill='%235865f2'/%3E%3Cpath d='M30 65 L45 80 L70 55 L55 40 Z' fill='%23fff'/%3E%3C/svg%3E";
+    const mysticHookIconUrl = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 C77.6 0 100 22.4 100 50 C100 77.6 77.6 100 50 100 C22.4 100 0 77.6 0 50 C0 22.4 22.4 0 50 0 Z' fill='%235865f2'/%E3%88%9C%3Cpath d='M30 65 L45 80 L70 55 L55 40 Z' fill='%23fff'/%E3%88%9C/svg%3E";
 
     // Initial state for the app, now with an empty embeds array
     const initialAppState = {
@@ -184,14 +184,14 @@
       const handleComponentChange = (index, field, value) => {
         const newComponents = [...components];
         newComponents[index] = { ...newComponents[index], [field]: value };
-        setAppState(prevState => ({ ...prevState, components: newComponents }));
+        setAppState(prevState => ({ ...prevState, newComponents }));
       };
       
       const handleFileChange = (e) => {
         setAppState(prevState => ({ ...prevState, file: e.target.files[0] }));
       };
 
-      // Function to send the webhook with detailed logging
+      // Function to send the webhook with detailed logging and robust data cleaning
       const sendWebhook = async () => {
         console.log("Starting webhook send process...");
 
@@ -201,26 +201,59 @@
           return;
         }
 
+        // --- Start of Robust Data Cleaning ---
+        const cleanedEmbeds = [];
+        for (const embed of embeds) {
+          const cleanedFields = [];
+          for (const field of embed.fields || []) {
+            // Check for valid field name and value
+            if (field.name && field.name.trim() !== '' && field.value && field.value.trim() !== '') {
+              cleanedFields.push(field);
+            } else {
+              console.warn("Skipping invalid field:", field);
+            }
+          }
+
+          // Check if embed itself has any meaningful content
+          if (embed.title || embed.description || embed.url || cleanedFields.length > 0) {
+            cleanedEmbeds.push({
+              ...embed,
+              fields: cleanedFields,
+            });
+          } else {
+            console.warn("Skipping empty embed:", embed);
+          }
+        }
+        
+        // Final payload construction
         const payload = {
           content: messageContent,
           username: username,
           avatar_url: avatarUrl,
           tts: tts,
-          // Updated filter to be more robust
-          embeds: embeds.filter(e => e.title || e.description || e.url || (e.fields && e.fields.length > 0)),
-          components: components.map(c => ({
-            type: 1, // ActionRow
-            components: [{
-              type: c.type === 'button' ? 2 : 3, // Button or Select Menu
-              style: c.style,
-              label: c.label,
-              url: c.url,
-              custom_id: c.customId
-            }]
-          }))
+          // Only include embeds and components if they have valid content
+          ...(cleanedEmbeds.length > 0 && { embeds: cleanedEmbeds }),
+          ...(components.length > 0 && {
+            components: components.map(c => ({
+              type: 1, // ActionRow
+              components: [{
+                type: c.type === 'button' ? 2 : 3, // Button or Select Menu
+                style: c.style,
+                label: c.label,
+                url: c.url,
+                custom_id: c.customId
+              }]
+            }))
+          })
         };
-        
-        console.log("Payload to be sent:", payload);
+
+        // If the payload has no content, embeds, or components, warn the user
+        if (!payload.content && (!payload.embeds || payload.embeds.length === 0) && (!payload.components || payload.components.length === 0)) {
+          setAppState(prevState => ({ ...prevState, statusMessage: "Payload is empty. Please add content, embeds, or components." }));
+          return;
+        }
+
+        console.log("Final payload to be sent:", payload);
 
         const formData = new FormData();
         formData.append('payload_json', JSON.stringify(payload));
@@ -237,7 +270,7 @@
             url.searchParams.append('thread_id', threadId);
           }
           if (messageId) {
-            url.searchParams.append('wait', 'true'); // For message editing, though not fully implemented here
+            url.searchParams.append('wait', 'true');
           }
           
           console.log("Sending POST request to:", url.href);
