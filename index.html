@@ -20,37 +20,11 @@
 <body class="bg-gray-900 text-white">
   <div id="root"></div>
 
-  <!-- Load React, ReactDOM, and Babel from CDN -->
+  <!-- Load React and ReactDOM from CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
-  <!-- Load Firebase from CDN -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-    window.initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-    window.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-    
-    // Global Firebase instances
-    try {
-      window.app = initializeApp(firebaseConfig);
-      window.auth = getAuth(window.app);
-      window.db = getFirestore(window.app);
-      window.signInWithCustomToken = signInWithCustomToken;
-      window.signInAnonymously = signInAnonymously;
-      window.onAuthStateChanged = onAuthStateChanged;
-      window.doc = doc;
-      window.setDoc = setDoc;
-      window.getDoc = getDoc;
-    } catch (e) {
-      console.error("Firebase initialization failed:", e);
-    }
-  </script>
-
   <!-- The main React app script, now using Babel -->
   <script type="text/babel">
     const { useState, useEffect } = React;
@@ -68,20 +42,24 @@
     // Custom SVG icon as a data URL
     const mysticHookIconUrl = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 C77.6 0 100 22.4 100 50 C100 77.6 77.6 100 50 100 C22.4 100 0 77.6 0 50 C0 22.4 22.4 0 50 0 Z' fill='%235865f2'/%3E%3Cpath d='M30 65 L45 80 L70 55 L55 40 Z' fill='%23fff'/%3E%3C/svg%3E";
 
-
     const App = () => {
-      // Firebase-related state
-      const [user, setUser] = useState(null);
-      const [loading, setLoading] = useState(true);
-
       // Core webhook state
-      const [embeds, setEmbeds] = useState([]);
+      const [embeds, setEmbeds] = useState([
+        {
+          title: 'Welcome to MysticHook!',
+          description: "Start customizing your Discord message here. Use the form on the left to add text, embeds, and buttons, and see a live preview on the right.",
+          color: '#5865f2',
+          url: 'https://discord.com/',
+          fields: [{ name: "Live Preview", value: "This section updates automatically as you type.", inline: true }]
+        }
+      ]);
       const [currentEmbedIndex, setCurrentEmbedIndex] = useState(0);
       const [components, setComponents] = useState([]);
       const [messageContent, setMessageContent] = useState('');
       const [username, setUsername] = useState('MysticHook');
       const [avatarUrl, setAvatarUrl] = useState('');
       const [webhookUrl, setWebhookUrl] = useState('');
+      const [isWebhookValid, setIsWebhookValid] = useState(false);
       const [tts, setTts] = useState(false);
       const [threadId, setThreadId] = useState('');
       const [messageId, setMessageId] = useState('');
@@ -89,116 +67,50 @@
       const [audioFile, setAudioFile] = useState(null);
       const [isRecording, setIsRecording] = useState(false);
       const [recorder, setRecorder] = useState(null);
-      const [saveStatus, setSaveStatus] = useState('');
+      const [statusMessage, setStatusMessage] = useState('');
+      // State for webhook's live info
+      const [liveUsername, setLiveUsername] = useState('');
+      const [liveAvatarUrl, setLiveAvatarUrl] = useState('');
 
       // Voice message state
       const [audioBlob, setAudioBlob] = useState(null);
 
-      // Firestore Initialization
+      // Effect to validate the webhook URL and fetch its info
       useEffect(() => {
-        if (!window.auth || !window.db) {
-          console.error("Firebase instances are not available.");
-          setLoading(false);
-          return;
-        }
-
-        const initAuth = async () => {
-          try {
-            if (window.initialAuthToken) {
-              await window.signInWithCustomToken(window.auth, window.initialAuthToken);
-            } else {
-              await window.signInAnonymously(window.auth);
-            }
-          } catch (error) {
-            console.error('Error during Firebase sign-in:', error);
-            await window.signInAnonymously(window.auth);
-          }
-        };
-
-        const unsubscribe = window.onAuthStateChanged(window.auth, (currentUser) => {
-          setUser(currentUser);
-          setLoading(false);
-          // Load data after a user is authenticated
-          if (currentUser) {
-            loadApp(window.db, currentUser);
-          }
-        });
+        const isValid = webhookUrl.startsWith('https://discord.com/api/webhooks/');
+        setIsWebhookValid(isValid);
         
-        initAuth();
-
-        return () => unsubscribe();
-      }, []);
-
-      // Firestore Save/Load functions
-      const saveApp = async () => {
-        if (!window.db || !user) {
-          setSaveStatus('Error: User not authenticated.');
-          return;
-        }
-        const userId = user.uid;
-        const userDocRef = window.doc(window.db, 'artifacts', window.appId, 'users', userId, 'webhooks', 'data');
-        try {
-          setSaveStatus('Saving...');
-          const dataToSave = {
-            embeds: embeds,
-            messageContent: messageContent,
-            username: username,
-            avatarUrl: avatarUrl,
-            webhookUrl: webhookUrl,
-            tts: tts,
-            threadId: threadId,
-            components: components,
-            messageId: messageId
-          };
-          await window.setDoc(userDocRef, dataToSave);
-          setSaveStatus('Saved successfully!');
-        } catch (e) {
-          console.error("Error saving document: ", e);
-          setSaveStatus('Save Failed!');
-        }
-      };
-
-      const loadApp = async (dbInstance, currentUser) => {
-        if (!dbInstance || !currentUser) {
-          setSaveStatus('Error: User not authenticated.');
-          return;
-        }
-        const userId = currentUser.uid;
-        const userDocRef = window.doc(dbInstance, 'artifacts', window.appId, 'users', userId, 'webhooks', 'data');
-        try {
-          setSaveStatus('Loading...');
-          const docSnap = await window.getDoc(userDocRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setEmbeds(data.embeds || []);
-            setMessageContent(data.messageContent || '');
-            setUsername(data.username || '');
-            setAvatarUrl(data.avatarUrl || '');
-            setWebhookUrl(data.webhookUrl || '');
-            setTts(data.tts || false);
-            setThreadId(data.threadId || '');
-            setComponents(data.components || []);
-            setMessageId(data.messageId || '');
-            setSaveStatus('Loaded successfully!');
-          } else {
-            // If no data, set initial embeds.
-            const initialEmbeds = [
-              {
-                title: 'Welcome to MysticHook!',
-                description: "Start customizing your Discord message here. Use the form on the left to add text, embeds, and buttons, and see a live preview on the right.",
-                color: '#5865f2',
-                url: 'https://discord.com/',
-                fields: [{ name: "Live Preview", value: "This section updates automatically as you type.", inline: true }]
+        if (isValid) {
+          fetch(webhookUrl, { method: 'GET' })
+            .then(response => {
+              if (response.ok) {
+                return response.json();
+              } else {
+                throw new Error('Failed to fetch webhook data');
               }
-            ];
-            setEmbeds(initialEmbeds);
-            setSaveStatus('No saved data found, showing initial template.');
-          }
-        } catch (e) {
-          console.error("Error loading document: ", e);
-          setSaveStatus('Load Failed!');
+            })
+            .then(data => {
+              setLiveUsername(data.name);
+              // Construct Discord avatar URL
+              const avatar = data.avatar;
+              if (avatar) {
+                const extension = avatar.startsWith('a_') ? 'gif' : 'png';
+                setLiveAvatarUrl(`https://cdn.discordapp.com/avatars/${data.id}/${avatar}.${extension}`);
+              } else {
+                // Default avatar if none is set
+                setLiveAvatarUrl(`https://discord.com/assets/f9bb9c4af2b9c32de7868010385d564b.svg`);
+              }
+            })
+            .catch(error => {
+              console.error("Error fetching webhook info:", error);
+              setLiveUsername('');
+              setLiveAvatarUrl('');
+            });
+        } else {
+          setLiveUsername('');
+          setLiveAvatarUrl('');
         }
-      };
+      }, [webhookUrl]);
 
       // State management for embeds and fields
       const handleEmbedChange = (field, value) => {
@@ -207,146 +119,288 @@
         setEmbeds(newEmbeds);
       };
 
-      const handleFieldChange = (fieldIndex, field, value) => {
+      const handleFieldChange = (fieldIndex, fieldName, value) => {
         const newEmbeds = [...embeds];
         const newFields = [...(newEmbeds[currentEmbedIndex].fields || [])];
-        newFields[fieldIndex] = { ...newFields[fieldIndex], [field]: value };
-        newEmbeds[currentEmbedIndex].fields = newFields;
-        setEmbeds(newEmbeds);
-      };
-
-      const addField = () => {
-        const newEmbeds = [...embeds];
-        const newFields = [...(newEmbeds[currentEmbedIndex].fields || [])];
-        newFields.push({ name: '', value: '', inline: false });
-        newEmbeds[currentEmbedIndex].fields = newFields;
-        setEmbeds(newEmbeds);
-      };
-
-      const deleteField = (index) => {
-        const newEmbeds = [...embeds];
-        const newFields = newEmbeds[currentEmbedIndex].fields.filter((_, i) => i !== index);
+        if (!newFields[fieldIndex]) {
+          newFields[fieldIndex] = {};
+        }
+        newFields[fieldIndex][fieldName] = value;
         newEmbeds[currentEmbedIndex].fields = newFields;
         setEmbeds(newEmbeds);
       };
 
       const addEmbed = () => {
-        const newEmbed = {
-          title: '', description: '', color: '#7289da', url: '', timestamp: false,
-          author: { name: '', icon_url: '' },
-          footer: { text: '', icon_url: '' },
-          image: { url: '' }, thumbnail: { url: '' },
-          fields: []
-        };
-        setEmbeds([...embeds, newEmbed]);
+        setEmbeds([...embeds, { title: '', description: '', color: '', fields: [] }]);
         setCurrentEmbedIndex(embeds.length);
       };
 
-      // Updated deleteEmbed function
-      const deleteEmbed = (index) => {
+      const removeEmbed = (index) => {
         const newEmbeds = embeds.filter((_, i) => i !== index);
         setEmbeds(newEmbeds);
-        // Adjust the current index if the deleted one was the last one
         if (currentEmbedIndex >= newEmbeds.length) {
-          setCurrentEmbedIndex(Math.max(0, newEmbeds.length - 1));
+          setCurrentEmbedIndex(newEmbeds.length > 0 ? newEmbeds.length - 1 : 0);
         }
       };
 
-      // State management for components
-      const addComponentRow = () => {
-        setComponents([...components, { type: 1, components: [] }]);
+      const addField = () => {
+        const newEmbeds = [...embeds];
+        const currentFields = newEmbeds[currentEmbedIndex].fields || [];
+        newEmbeds[currentEmbedIndex].fields = [...currentFields, { name: '', value: '', inline: false }];
+        setEmbeds(newEmbeds);
       };
 
-      const addRowComponent = (rowIndex) => {
-        const newComponents = [...components];
-        newComponents[rowIndex].components.push({ type: 2, label: 'Button', style: 1, custom_id: `button_${Math.random().toString(36).substring(2, 9)}` });
+      const removeField = (fieldIndex) => {
+        const newEmbeds = [...embeds];
+        newEmbeds[currentEmbedIndex].fields = newEmbeds[currentEmbedIndex].fields.filter((_, i) => i !== fieldIndex);
+        setEmbeds(newEmbeds);
+      };
+
+      // State management for components (buttons/select menus)
+      const addComponent = () => {
+        setComponents([...components, { type: 'button', label: '', customId: '', style: 1, url: '' }]);
+      };
+
+      const removeComponent = (index) => {
+        const newComponents = components.filter((_, i) => i !== index);
         setComponents(newComponents);
       };
 
-      const handleComponentChange = (rowIndex, componentIndex, field, value) => {
+      const handleComponentChange = (index, field, value) => {
         const newComponents = [...components];
-        newComponents[rowIndex].components[componentIndex][field] = value;
+        newComponents[index] = { ...newComponents[index], [field]: value };
         setComponents(newComponents);
       };
+      
+      const handleFileChange = (e) => {
+        setFile(e.target.files[0]);
+      };
 
-      const deleteComponent = (rowIndex, componentIndex) => {
-        const newComponents = [...components];
-        newComponents[rowIndex].components.splice(componentIndex, 1);
-        if (newComponents[rowIndex].components.length === 0) {
-          newComponents.splice(rowIndex, 1);
+      // Function to send the webhook
+      const sendWebhook = async () => {
+        if (!webhookUrl || !isWebhookValid) {
+          setStatusMessage("Please enter a valid Webhook URL.");
+          return;
         }
-        setComponents(newComponents);
+
+        const payload = {
+          content: messageContent,
+          username: username,
+          avatar_url: avatarUrl,
+          tts: tts,
+          embeds: embeds.filter(e => e.title || e.description || (e.fields && e.fields.length > 0)),
+          components: components.map(c => ({
+            type: 1, // ActionRow
+            components: [{
+              type: c.type === 'button' ? 2 : 3, // Button or Select Menu
+              style: c.style,
+              label: c.label,
+              url: c.url,
+              custom_id: c.customId
+            }]
+          }))
+        };
+        
+        const formData = new FormData();
+        formData.append('payload_json', JSON.stringify(payload));
+        if (file) {
+          formData.append('file', file);
+        }
+
+        setStatusMessage("Sending...");
+        
+        try {
+          const url = new URL(webhookUrl);
+          if (threadId) {
+            url.searchParams.append('thread_id', threadId);
+          }
+          if (messageId) {
+            url.searchParams.append('wait', 'true'); // For message editing, though not fully implemented here
+          }
+
+          const response = await fetch(url.href, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setStatusMessage("Webhook sent successfully!");
+            // You can optionally get the message ID here for editing
+            // setMessageId(data.id);
+          } else {
+            const errorText = await response.text();
+            setStatusMessage(`Error sending webhook: ${response.status} ${response.statusText}. Details: ${errorText}`);
+          }
+        } catch (error) {
+          console.error("Error sending webhook:", error);
+          setStatusMessage(`Failed to send webhook. Check the URL and try again.`);
+        }
       };
 
-      const deleteComponentRow = (rowIndex) => {
-        const newComponents = components.filter((_, i) => i !== rowIndex);
-        setComponents(newComponents);
+      // Function to generate and play TTS audio
+      const generateTTS = async () => {
+        if (!messageContent) {
+          setStatusMessage("Please enter a message to generate TTS.");
+          return;
+        }
+
+        const payload = {
+          contents: [{
+            parts: [{ text: messageContent }]
+          }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: "Kore" }
+              }
+            }
+          },
+          model: "gemini-2.5-flash-preview-tts"
+        };
+        const apiKey = ""; // Canvas will provide this
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+        
+        setStatusMessage("Generating TTS audio...");
+        try {
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) {
+            throw new Error(`API request failed with status: ${response.status}`);
+          }
+
+          const result = await response.json();
+          const part = result?.candidates?.[0]?.content?.parts?.[0];
+          const audioData = part?.inlineData?.data;
+          const mimeType = part?.inlineData?.mimeType;
+          
+          if (audioData && mimeType && mimeType.startsWith("audio/")) {
+            const pcmData = atob(audioData);
+            const pcmBuffer = new ArrayBuffer(pcmData.length);
+            const pcmView = new Uint8Array(pcmBuffer);
+            for (let i = 0; i < pcmData.length; i++) {
+              pcmView[i] = pcmData.charCodeAt(i);
+            }
+
+            const sampleRate = parseInt(mimeType.match(/rate=(\d+)/)[1], 10);
+            const pcm16 = new Int16Array(pcmBuffer.buffer);
+            const wavBlob = pcmToWav(pcm16, sampleRate);
+            const audioUrl = URL.createObjectURL(wavBlob);
+            
+            const audio = new Audio(audioUrl);
+            audio.play();
+            setStatusMessage("TTS audio is playing...");
+            audio.onended = () => setStatusMessage("TTS playback finished.");
+
+          } else {
+            setStatusMessage("TTS generation failed. No audio data received.");
+          }
+
+        } catch (error) {
+          console.error("Error generating or playing TTS:", error);
+          setStatusMessage(`TTS Error: ${error.message}`);
+        }
       };
 
-      // Clipboard functionality
-      const copyJson = () => {
-        const payload = {};
-        if (messageContent.trim()) payload.content = messageContent;
-        if (username.trim()) payload.username = username;
-        if (avatarUrl.trim()) payload.avatar_url = avatarUrl;
-        if (tts) payload.tts = true;
-        if (threadId.trim()) payload.thread_id = threadId;
+      // Helper function to convert PCM to WAV format
+      const pcmToWav = (pcm16, sampleRate) => {
+        const dataLength = pcm16.length * 2; // 16-bit PCM
+        const buffer = new ArrayBuffer(44 + dataLength);
+        const view = new DataView(buffer);
 
-        const validEmbeds = embeds.map(embed => {
-          const embedPayload = {
-            title: embed.title || undefined,
-            description: embed.description || undefined,
-            color: embed.color ? parseInt(embed.color.slice(1), 16) : undefined,
-            url: embed.url || undefined,
-            timestamp: embed.timestamp ? new Date().toISOString() : undefined,
-            author: (embed.author?.name || embed.author?.icon_url) ? { name: embed.author.name || undefined, icon_url: embed.author.icon_url || undefined } : undefined,
-            image: embed.image?.url ? { url: embed.image.url } : undefined,
-            thumbnail: embed.thumbnail?.url ? { url: embed.thumbnail.url } : undefined,
-            footer: (embed.footer?.text || embed.footer?.icon_url) ? { text: embed.footer.text || undefined, icon_url: embed.footer.icon_url || undefined } : undefined,
-            fields: embed.fields?.length > 0 ? embed.fields.filter(f => f.name && f.value) : undefined,
-          };
-          Object.keys(embedPayload).forEach(key => embedPayload[key] === undefined && delete embedPayload[key]);
-          return Object.keys(embedPayload).length > 0 ? embedPayload : null;
-        }).filter(e => e !== null);
+        let offset = 0;
 
-        if (validEmbeds.length > 0) payload.embeds = validEmbeds;
-        if (components.length > 0) payload.components = components;
+        // RIFF header
+        writeString(view, offset, 'RIFF');
+        offset += 4;
+        view.setUint32(offset, 36 + dataLength, true);
+        offset += 4;
+        writeString(view, offset, 'WAVE');
+        offset += 4;
 
-        const jsonOutput = JSON.stringify(payload, null, 2);
-        const tempTextArea = document.createElement('textarea');
-        tempTextArea.value = jsonOutput;
-        document.body.appendChild(tempTextArea);
-        tempTextArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(tempTextArea);
+        // fmt sub-chunk
+        writeString(view, offset, 'fmt ');
+        offset += 4;
+        view.setUint32(offset, 16, true);
+        offset += 4;
+        view.setUint16(offset, 1, true); // AudioFormat: PCM
+        offset += 2;
+        view.setUint16(offset, 1, true); // NumChannels
+        offset += 2;
+        view.setUint32(offset, sampleRate, true); // SampleRate
+        offset += 4;
+        view.setUint32(offset, sampleRate * 2, true); // ByteRate
+        offset += 4;
+        view.setUint16(offset, 2, true); // BlockAlign
+        offset += 2;
+        view.setUint16(offset, 16, true); // BitsPerSample
+        offset += 2;
 
-        setSaveStatus('JSON copied to clipboard!');
-        setTimeout(() => setSaveStatus(''), 2000);
+        // data sub-chunk
+        writeString(view, offset, 'data');
+        offset += 4;
+        view.setUint32(offset, dataLength, true);
+        offset += 4;
+
+        // Write PCM data
+        for (let i = 0; i < pcm16.length; i++, offset += 2) {
+          view.setInt16(offset, pcm16[i], true);
+        }
+
+        return new Blob([view], { type: 'audio/wav' });
       };
+
+      const writeString = (view, offset, string) => {
+        for (let i = 0; i < string.length; i++) {
+          view.setUint8(offset + i, string.charCodeAt(i));
+        }
+      };
+
+      // Function to parse and render Markdown to HTML
+      const renderMarkdown = (text) => {
+        if (!text) return '';
+        let html = text;
+        // Convert bold markdown (**text** or __text__) to <strong>
+        html = html.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
+        // Convert heading (# text) to <h1>
+        html = html.replace(/^#\s(.+)/gm, '<h1 class="text-xl font-bold">$1</h1>');
+        return html;
+      };
+
+      // State for the Message/Embed preview
+      const previewEmbed = embeds[currentEmbedIndex] || {};
 
       // Voice message recording functions
       const startRecording = async () => {
-        if (isRecording) return;
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mediaRecorder = new MediaRecorder(stream);
-          setRecorder(mediaRecorder);
+          const newRecorder = new MediaRecorder(stream);
           let audioChunks = [];
-          mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-          mediaRecorder.onstop = () => {
-            const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
-            setAudioBlob(audioBlob);
-            setAudioFile(new File([audioBlob], "voice_message.mp3", { type: "audio/mp3" }));
+          newRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+          };
+          newRecorder.onstop = () => {
+            const newAudioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            setAudioBlob(newAudioBlob);
+            setAudioFile(newAudioBlob);
+            setStatusMessage("Recording stopped. Audio saved.");
             stream.getTracks().forEach(track => track.stop());
           };
-          mediaRecorder.start();
+          newRecorder.start();
+          setRecorder(newRecorder);
           setIsRecording(true);
+          setStatusMessage("Recording started...");
         } catch (err) {
-          console.error('Error starting recording:', err);
-          setSaveStatus('Error: Could not access microphone.');
+          console.error('Failed to start recording:', err);
+          setStatusMessage("Error: Failed to start recording. Ensure you have a microphone.");
         }
       };
-
+      
       const stopRecording = () => {
         if (recorder) {
           recorder.stop();
@@ -354,363 +408,375 @@
         }
       };
 
-      const deleteVoiceRecording = () => {
-        setAudioBlob(null);
-        setAudioFile(null);
-      };
-      
-      const currentEmbed = embeds[currentEmbedIndex] || null;
-      
-      if (loading) {
-          return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
-              <div className="text-xl">Loading...</div>
-            </div>
-          );
+      const playAudio = () => {
+        if (audioBlob) {
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioUrl);
+          audio.play();
+          setStatusMessage("Playing voice message...");
+          audio.onended = () => setStatusMessage("Voice message playback finished.");
         }
+      };
+
+      // Choose which username and avatar to display
+      const displayUsername = liveUsername || username || 'MysticHook';
+      const displayAvatarUrl = liveAvatarUrl || avatarUrl || 'https://placehold.co/100x100/5865f2/ffffff?text=U';
+
 
       return (
-        <div className="p-4 sm:p-6 bg-gray-900 min-h-screen font-sans antialiased text-white">
-          <div className="flex justify-between items-center mb-6 flex-wrap">
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 sm:mb-0">MysticHook</h1>
-            {user && (
-              <div className="flex items-center space-x-2 sm:space-x-4 mt-2 lg:mt-0">
-                <span className="text-gray-400 text-sm">User ID: <span className="font-mono break-all">{user?.uid}</span></span>
-              </div>
-            )}
-          </div>
+        <div className="flex flex-col lg:flex-row h-full min-h-screen bg-gray-900 text-gray-100 p-4 lg:p-8">
+          {/* Left Panel: Controls */}
+          <div className="w-full lg:w-1/2 p-4 bg-gray-800 rounded-xl shadow-lg mb-8 lg:mb-0 lg:mr-4 overflow-y-auto">
+            <h1 className="text-3xl font-extrabold text-blue-400 mb-6 flex items-center">
+              <img src={mysticHookIconUrl} alt="MysticHook Icon" className="w-8 h-8 mr-3"/>
+              MysticHook
+            </h1>
+            <p className="text-gray-400 mb-6 text-sm">Create and customize Discord webhook messages with rich embeds and components.</p>
 
-          <div className="container mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-            {/* Input Form Section */}
-            <div className="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-xl overflow-y-auto" style={{ maxHeight: '90vh' }}>
-              
-              <div className="space-y-6">
-                <h2 className="text-lg sm:text-xl font-semibold text-white border-b border-gray-700 pb-2">General Message Settings</h2>
-                
-                <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
-                  <label htmlFor="webhook-url" className="text-sm font-medium text-gray-400 w-full sm:w-auto">Webhook URL</label>
-                  <Tooltip text="The unique URL provided by Discord for your webhook.">
-                    <i className="fas fa-question-circle text-gray-500"></i>
-                  </Tooltip>
-                  <input type="url" id="webhook-url" placeholder="https://discord.com/api/webhooks/..." className="flex-1 w-full rounded-md bg-gray-700 border-transparent text-white focus:border-indigo-500 focus:ring-indigo-500" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
-                </div>
-
-                <div>
-                  <label htmlFor="message-content" className="block text-sm font-medium text-gray-400">Normal Message Content</label>
-                  <textarea id="message-content" rows="3" placeholder="Enter your normal message here..." className="mt-1 block w-full rounded-md bg-gray-700 border-transparent text-white focus:border-indigo-500 focus:ring-indigo-500" value={messageContent} onChange={(e) => setMessageContent(e.target.value)}></textarea>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="username" className="block text-sm font-medium text-gray-400">Custom Username</label>
-                    <input type="text" id="username" placeholder="Override the webhook's username" className="mt-1 block w-full rounded-md bg-gray-700 border-transparent text-white" value={username} onChange={(e) => setUsername(e.target.value)} />
-                  </div>
-                  <div>
-                    <label htmlFor="avatar-url" className="block text-sm font-medium text-gray-400">Custom Avatar URL</label>
-                    <input type="url" id="avatar-url" placeholder="https://example.com/avatar.png" className="mt-1 block w-full rounded-md bg-gray-700 border-transparent text-white" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="thread-id" className="block text-sm font-medium text-gray-400">Thread ID</label>
-                    <input type="text" id="thread-id" placeholder="Optional Thread ID to post in" className="mt-1 block w-full rounded-md bg-gray-700 border-transparent text-white" value={threadId} onChange={(e) => setThreadId(e.target.value)} />
-                  </div>
-                  <div>
-                    <label htmlFor="message-id" className="block text-sm font-medium text-gray-400">Message ID (for editing)</label>
-                    <input type="text" id="message-id" placeholder="Optional Message ID to edit" className="mt-1 block w-full rounded-md bg-gray-700 border-transparent text-white" value={messageId} onChange={(e) => setMessageId(e.target.value)} />
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <label htmlFor="tts-checkbox" className="text-sm font-medium text-gray-400">Text-to-Speech (TTS)</label>
-                  <Tooltip text="If checked, the message content will be read aloud by Discord's TTS system.">
-                    <i className="fas fa-question-circle text-gray-500"></i>
-                  </Tooltip>
-                  <input type="checkbox" id="tts-checkbox" className="rounded text-indigo-600 focus:ring-indigo-500" checked={tts} onChange={(e) => setTts(e.target.checked)} />
-                </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-lg sm:text-xl font-semibold text-white border-b border-gray-700 pb-2">Voice Message</h2>
-                  <div id="voice-message-controls" className="flex flex-wrap items-center space-x-2 space-y-2 sm:space-y-0">
-                    <button onClick={startRecording} className="py-2 px-4 rounded-md text-white bg-red-600 hover:bg-red-700 transition-colors" disabled={isRecording}>
-                      <i className="fas fa-microphone"></i> {isRecording ? 'Recording...' : 'Record'}
-                    </button>
-                    <button onClick={stopRecording} className="py-2 px-4 rounded-md text-white bg-gray-600 hover:bg-gray-700 transition-colors" disabled={!isRecording}>
-                      <i className="fas fa-stop"></i> Stop
-                    </button>
-                    {audioBlob && (
-                      <button onClick={deleteVoiceRecording} className="py-2 px-4 rounded-md text-white bg-red-600 hover:bg-red-700 transition-colors">
-                        <i className="fas fa-trash"></i> Delete
-                      </button>
-                    )}
-                  </div>
-                  {audioBlob && (
-                    <div className="mt-2 p-3 bg-gray-700 rounded-md">
-                      <audio src={URL.createObjectURL(audioBlob)} controls className="w-full"></audio>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="space-y-4">
-                  <h2 className="text-lg sm:text-xl font-semibold text-white border-b border-gray-700 pb-2">File Upload</h2>
-                  <input type="file" id="file-input" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-colors" onChange={(e) => setFile(e.target.files[0])} />
-                  <div id="file-status" className="text-gray-400 text-sm mt-2">{file ? `File selected: ${file.name}` : 'No file selected.'}</div>
-                </div>
-                
-                <div className="space-y-4">
-                  <h2 className="text-lg sm:text-xl font-semibold text-white border-b border-gray-700 pb-2">Embeds</h2>
-                  <div className="flex items-center space-x-2 mb-4 overflow-x-auto p-2">
-                    {embeds.map((_, index) => (
-                      <div key={index} className="flex-shrink-0 flex items-center space-x-1">
-                        <button
-                          onClick={() => setCurrentEmbedIndex(index)}
-                          className={`py-1 px-3 rounded-md text-white text-sm whitespace-nowrap transition-colors ${index === currentEmbedIndex ? 'bg-indigo-600' : 'bg-gray-600 hover:bg-gray-700'}`}
-                        >
-                          Embed {index + 1}
-                        </button>
-                        <Tooltip text="Remove this embed">
-                          <button
-                            onClick={() => deleteEmbed(index)}
-                            className="p-2 rounded-md text-white bg-red-600 hover:bg-red-700 transition-colors"
-                          >
-                            <i className="fas fa-trash-alt"></i>
-                          </button>
-                        </Tooltip>
-                      </div>
-                    ))}
-                    <button onClick={addEmbed} className="flex-shrink-0 py-2 px-4 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
-                      <i className="fas fa-plus"></i> Add Embed
-                    </button>
-                  </div>
-
-                  {currentEmbed && (
-                    <div className="space-y-4 p-4 bg-gray-700 rounded-lg">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label htmlFor="embed-title" className="block text-sm font-medium text-gray-400">Title</label>
-                          <input type="text" id="embed-title" placeholder="Embed Title" className="mt-1 block w-full rounded-md bg-gray-600 border-transparent text-white" value={currentEmbed.title || ''} onChange={(e) => handleEmbedChange('title', e.target.value)} />
-                        </div>
-                        <div>
-                          <label htmlFor="embed-url" className="block text-sm font-medium text-gray-400">URL (for title)</label>
-                          <input type="url" id="embed-url" placeholder="URL for the embed title" className="mt-1 block w-full rounded-md bg-gray-600 border-transparent text-white" value={currentEmbed.url || ''} onChange={(e) => handleEmbedChange('url', e.target.value)} />
-                        </div>
-                      </div>
-                      <div>
-                        <label htmlFor="embed-description" className="block text-sm font-medium text-gray-400">Description</label>
-                        <textarea id="embed-description" rows="3" placeholder="Embed Description" className="mt-1 block w-full rounded-md bg-gray-600 border-transparent text-white" value={currentEmbed.description || ''} onChange={(e) => handleEmbedChange('description', e.target.value)}></textarea>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label htmlFor="embed-color" className="block text-sm font-medium text-gray-400">Color</label>
-                          <input type="color" id="embed-color" value={currentEmbed.color || '#5865f2'} className="mt-1 rounded-md w-full h-10" onChange={(e) => handleEmbedChange('color', e.target.value)} />
-                        </div>
-                        <div className="flex items-center">
-                          <label htmlFor="embed-timestamp" className="text-sm font-medium text-gray-400">Show Timestamp</label>
-                          <input type="checkbox" id="embed-timestamp" className="rounded text-indigo-600 ml-2" checked={currentEmbed.timestamp || false} onChange={(e) => handleEmbedChange('timestamp', e.target.checked)} />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label htmlFor="author-name" className="block text-sm font-medium text-gray-400">Author Name</label>
-                          <input type="text" id="author-name" placeholder="Author Name" className="mt-1 block w-full rounded-md bg-gray-600 border-transparent text-white" value={currentEmbed.author?.name || ''} onChange={(e) => handleEmbedChange('author', { ...currentEmbed.author, name: e.target.value })} />
-                        </div>
-                        <div>
-                          <label htmlFor="author-icon-url" className="block text-sm font-medium text-gray-400">Author Icon URL</label>
-                          <input type="url" id="author-icon-url" placeholder="https://example.com/author.png" className="mt-1 block w-full rounded-md bg-gray-600 border-transparent text-white" value={currentEmbed.author?.icon_url || ''} onChange={(e) => handleEmbedChange('author', { ...currentEmbed.author, icon_url: e.target.value })} />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label htmlFor="footer-text" className="block text-sm font-medium text-gray-400">Footer Text</label>
-                          <input type="text" id="footer-text" placeholder="Footer Text" className="mt-1 block w-full rounded-md bg-gray-600 border-transparent text-white" value={currentEmbed.footer?.text || ''} onChange={(e) => handleEmbedChange('footer', { ...currentEmbed.footer, text: e.target.value })} />
-                        </div>
-                        <div>
-                          <label htmlFor="footer-icon-url" className="block text-sm font-medium text-gray-400">Footer Icon URL</label>
-                          <input type="url" id="footer-icon-url" placeholder="https://example.com/footer.png" className="mt-1 block w-full rounded-md bg-gray-600 border-transparent text-white" value={currentEmbed.footer?.icon_url || ''} onChange={(e) => handleEmbedChange('footer', { ...currentEmbed.footer, icon_url: e.target.value })} />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label htmlFor="embed-image-url" className="block text-sm font-medium text-gray-400">Image URL</label>
-                          <input type="url" id="embed-image-url" placeholder="https://example.com/image.png" className="mt-1 block w-full rounded-md bg-gray-600 border-transparent text-white" value={currentEmbed.image?.url || ''} onChange={(e) => handleEmbedChange('image', { url: e.target.value })} />
-                        </div>
-                        <div>
-                          <label htmlFor="embed-thumbnail-url" className="block text-sm font-medium text-gray-400">Thumbnail URL</label>
-                          <input type="url" id="embed-thumbnail-url" placeholder="https://example.com/thumbnail.png" className="mt-1 block w-full rounded-md bg-gray-600 border-transparent text-white" value={currentEmbed.thumbnail?.url || ''} onChange={(e) => handleEmbedChange('thumbnail', { url: e.target.value })} />
-                        </div>
-                      </div>
-                      <div className="space-y-4 mt-4">
-                        <h3 className="text-base sm:text-lg font-semibold text-white">Fields</h3>
-                        {currentEmbed.fields.map((field, fieldIndex) => (
-                          <div key={fieldIndex} className="bg-gray-600 p-3 rounded-md space-y-2">
-                            <div className="flex space-x-2 items-center">
-                              <input type="text" value={field.name} placeholder="Field Name" className="flex-1 rounded-md bg-gray-500 border-transparent text-white" onChange={(e) => handleFieldChange(fieldIndex, 'name', e.target.value)} />
-                              <Tooltip text="Delete this field">
-                                <button onClick={() => deleteField(fieldIndex)} className="p-1 rounded-full text-white bg-red-500 hover:bg-red-600 transition-colors">
-                                  <i className="fas fa-trash-alt text-xs"></i>
-                                </button>
-                              </Tooltip>
-                            </div>
-                            <textarea rows="2" value={field.value} placeholder="Field Value" className="block w-full rounded-md bg-gray-500 border-transparent text-white" onChange={(e) => handleFieldChange(fieldIndex, 'value', e.target.value)}></textarea>
-                            <label className="flex items-center space-x-2 text-gray-400">
-                              <input type="checkbox" checked={field.inline} className="rounded text-indigo-600" onChange={(e) => handleFieldChange(fieldIndex, 'inline', e.target.checked)} />
-                              <span>Inline</span>
-                            </label>
-                          </div>
-                        ))}
-                        <button onClick={addField} className="w-full py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
-                          <i className="fas fa-plus"></i> Add Field
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-lg sm:text-xl font-semibold text-white border-b border-gray-700 pb-2">Buttons & Components</h2>
-                  <button onClick={addComponentRow} className="w-full py-2 px-4 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
-                    <i className="fas fa-plus"></i> Add an Action Row
-                  </button>
-                  {components.map((row, rowIndex) => (
-                    <div key={rowIndex} className="p-4 bg-gray-700 rounded-lg space-y-4">
-                      <div className="flex justify-between items-center border-b border-gray-600 pb-2">
-                        <h3 className="text-base sm:text-lg font-semibold text-white">Action Row {rowIndex + 1}</h3>
-                        <Tooltip text="Delete this entire row">
-                          <button onClick={() => deleteComponentRow(rowIndex)} className="p-1 rounded-full text-white bg-red-600 hover:bg-red-700 transition-colors">
-                            <i className="fas fa-trash-alt text-xs"></i>
-                          </button>
-                        </Tooltip>
-                      </div>
-                      {row.components.map((comp, compIndex) => {
-                          const buttonStyleMap = {
-                            1: 'bg-indigo-600 hover:bg-indigo-700',
-                            2: 'bg-gray-600 hover:bg-gray-700',
-                            3: 'bg-green-600 hover:bg-green-700',
-                            4: 'bg-red-600 hover:bg-red-700',
-                          };
-                          const buttonStyle = buttonStyleMap[comp.style] || 'bg-gray-600 hover:bg-gray-700';
-                          return (
-                            <div key={compIndex} className="bg-gray-600 p-3 rounded-md space-y-2">
-                              <div className="flex space-x-2 items-center">
-                                <input type="text" value={comp.label} placeholder="Button Label" className="flex-1 rounded-md bg-gray-500 border-transparent text-white" onChange={(e) => handleComponentChange(rowIndex, compIndex, 'label', e.target.value)} />
-                                <Tooltip text="Delete this button">
-                                  <button onClick={() => deleteComponent(rowIndex, compIndex)} className="p-1 rounded-full text-white bg-red-500 hover:bg-red-600 transition-colors">
-                                    <i className="fas fa-trash-alt text-xs"></i>
-                                  </button>
-                                </Tooltip>
-                              </div>
-                              <select value={comp.style} className="block w-full rounded-md bg-gray-500 border-transparent text-white" onChange={(e) => handleComponentChange(rowIndex, compIndex, 'style', parseInt(e.target.value))}>
-                                <option value="1">Primary (Blue)</option>
-                                <option value="2">Secondary (Gray)</option>
-                                <option value="3">Success (Green)</option>
-                                <option value="4">Danger (Red)</option>
-                              </select>
-                              <input type="text" value={comp.custom_id} placeholder="Custom ID" className="block w-full rounded-md bg-gray-500 border-transparent text-white" onChange={(e) => handleComponentChange(rowIndex, compIndex, 'custom_id', e.target.value)} />
-                            </div>
-                          );
-                        })}
-                      <button onClick={() => addRowComponent(rowIndex)} className="w-full py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-colors">
-                        <i className="fas fa-plus"></i> Add a Button to this Row
-                      </button>
-                    </div>
-                  ))}
+            {/* General Settings */}
+            <div className="bg-gray-700 p-4 rounded-lg mb-6">
+              <h2 className="text-xl font-bold mb-3 text-white">General Settings</h2>
+              <div className="space-y-4">
+                <InputGroup
+                  label="Webhook URL"
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  type="url"
+                  placeholder="https://discord.com/api/webhooks/..."
+                  required
+                  isValid={isWebhookValid}
+                />
+                <InputGroup label="Username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="MysticHook" />
+                <InputGroup label="Avatar URL" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} type="url" placeholder="https://..." />
+                <InputGroup label="Message Content" value={messageContent} onChange={(e) => setMessageContent(e.target.value)} type="textarea" placeholder="Hello, this is my webhook message!" />
+                <InputGroup label="Thread ID (Optional)" value={threadId} onChange={(e) => setThreadId(e.target.value)} placeholder="e.g. 1234567890" />
+                <div className="flex items-center">
+                  <input type="checkbox" id="ttsCheckbox" checked={tts} onChange={(e) => setTts(e.target.checked)} className="form-checkbox h-5 w-5 text-blue-600 rounded" />
+                  <label htmlFor="ttsCheckbox" className="ml-2 text-gray-300">Text-to-Speech (TTS)</label>
                 </div>
               </div>
             </div>
 
-            {/* Preview Section */}
-            <div className="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-xl relative overflow-y-auto" style={{ maxHeight: '90vh' }}>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white mb-6">Live Preview</h1>
-              <div className="bg-[#36393f] p-4 rounded-lg shadow-inner">
-                <div className="flex items-start space-x-4">
-                  <img src={mysticHookIconUrl} alt="User Avatar" className="w-10 h-10 rounded-full flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="font-semibold text-lg text-white">{username || 'MysticHook'}</span>
-                      <span className="text-sm text-gray-400">{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    {messageContent && (
-                      <p className="text-gray-200 text-sm mb-4 break-words">{messageContent}</p>
-                    )}
-                    {embeds.map((embed, index) => (
-                      <div key={index} className="bg-gray-700 p-4 rounded-lg border-l-4 mb-4" style={{ borderLeftColor: embed.color || '#5865f2' }}>
-                        {embed.author?.name && (
-                          <div className="flex items-center mb-2 space-x-2">
-                            <img src={embed.author.icon_url || 'https://placehold.co/32x32/1e1e1e/888888?text=A'} alt="Author" className="w-8 h-8 rounded-full flex-shrink-0" onError={(e) => e.target.style.display='none'} />
-                            <span className="text-gray-300 font-semibold">{embed.author.name}</span>
-                          </div>
-                        )}
-                        <div className="flex items-start flex-wrap-reverse md:flex-wrap">
-                          {embed.thumbnail?.url && <img src={embed.thumbnail.url} alt="Thumbnail" className="w-20 h-20 rounded-md float-right ml-4 object-cover" onError={(e) => e.target.style.display='none'} />}
-                          <div className="flex-1 min-w-0">
-                            {embed.title && <h2 className="text-white font-bold text-lg break-words">{embed.title}</h2>}
-                            {embed.description && <p className="text-gray-300 text-sm mt-1 break-words">{embed.description}</p>}
-                            {embed.fields?.length > 0 && (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2 mt-4">
-                                {embed.fields.map((field, fieldIndex) => (
-                                  <div key={fieldIndex} className="p-2 border-l-2 border-gray-500">
-                                    <h3 className="text-white font-semibold text-sm break-words">{field.name}</h3>
-                                    <p className="text-gray-400 text-xs break-words">{field.value}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        {embed.image?.url && <img src={embed.image.url} alt="Image" className="mt-4 rounded-md w-full h-auto object-cover" onError={(e) => e.target.style.display='none'} />}
-                        {(embed.footer?.text || embed.footer?.icon_url) && (
-                          <div className="flex items-center space-x-2 mt-4 text-sm text-gray-400">
-                            <img src={embed.footer.icon_url || 'https://placehold.co/20x20/1e1e1e/888888?text=F'} alt="Footer" className="w-5 h-5 rounded-full flex-shrink-0" onError={(e) => e.target.style.display='none'} />
-                            <span>{embed.footer.text}</span>
-                          </div>
-                        )}
-                        {embed.timestamp && <div className="text-xs text-gray-500 mt-2">{new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</div>}
-                      </div>
-                    ))}
-                    {audioBlob && (
-                      <div className="p-3 bg-gray-700 rounded-md">
-                        <audio src={URL.createObjectURL(audioBlob)} controls className="w-full"></audio>
-                      </div>
-                    )}
-                    {components.map((row, rowIndex) => (
-                      <div key={rowIndex} className="flex flex-wrap space-x-2 space-y-2 mt-4">
-                        {row.components.map((comp, compIndex) => {
-                          const buttonStyleMap = {
-                            1: 'bg-indigo-600 hover:bg-indigo-700',
-                            2: 'bg-gray-600 hover:bg-gray-700',
-                            3: 'bg-green-600 hover:bg-green-700',
-                            4: 'bg-red-600 hover:bg-red-700',
-                          };
-                          const buttonStyle = buttonStyleMap[comp.style] || 'bg-gray-600 hover:bg-gray-700';
-                          return (
-                            <button key={compIndex} className={`py-2 px-4 rounded-md text-white transition-colors ${buttonStyle}`}>
-                              {comp.label}
-                            </button>
-                          );
-                        })}
-                      </div>
+            {/* Embeds Section */}
+            <div className="bg-gray-700 p-4 rounded-lg mb-6">
+              <h2 className="text-xl font-bold mb-3 text-white flex justify-between items-center">
+                Embeds ({embeds.length})
+                <button onClick={addEmbed} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded-full transition-colors duration-200">
+                  + Add
+                </button>
+              </h2>
+              {embeds.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex space-x-2 overflow-x-auto pb-2">
+                    {embeds.map((_, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setCurrentEmbedIndex(index)}
+                        className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
+                          currentEmbedIndex === index ? 'bg-blue-600 text-white' : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                        }`}
+                      >
+                        Embed {index + 1}
+                      </button>
                     ))}
                   </div>
+                  {embeds[currentEmbedIndex] && (
+                    <div className="p-4 bg-gray-600 rounded-lg">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-semibold text-white">Embed {currentEmbedIndex + 1}</h3>
+                        <button onClick={() => removeEmbed(currentEmbedIndex)} className="text-red-400 hover:text-red-500">
+                          <i className="fas fa-trash-alt"></i>
+                        </button>
+                      </div>
+                      <div className="space-y-4">
+                        <InputGroup label="Title" value={embeds[currentEmbedIndex].title || ''} onChange={(e) => handleEmbedChange('title', e.target.value)} placeholder="Embed Title" />
+                        <InputGroup label="Description" value={embeds[currentEmbedIndex].description || ''} onChange={(e) => handleEmbedChange('description', e.target.value)} type="textarea" placeholder="Embed Description" />
+                        <InputGroup label="URL" value={embeds[currentEmbedIndex].url || ''} onChange={(e) => handleEmbedChange('url', e.target.value)} type="url" placeholder="https://..." />
+                        <InputGroup label="Color" value={embeds[currentEmbedIndex].color || ''} onChange={(e) => handleEmbedChange('color', e.target.value)} type="color" />
+                        
+                        {/* Fields Section */}
+                        <div className="bg-gray-500 p-4 rounded-lg">
+                          <div className="flex justify-between items-center mb-3">
+                            <h4 className="font-semibold text-white">Fields</h4>
+                            <button onClick={addField} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded-full transition-colors duration-200 text-sm">
+                              + Add Field
+                            </button>
+                          </div>
+                          {(embeds[currentEmbedIndex].fields || []).map((field, fieldIndex) => (
+                            <div key={fieldIndex} className="bg-gray-400 p-3 rounded-lg mb-2 last:mb-0">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm font-medium text-gray-800">Field {fieldIndex + 1}</span>
+                                <button onClick={() => removeField(fieldIndex)} className="text-red-600 hover:text-red-700">
+                                  <i className="fas fa-times"></i>
+                                </button>
+                              </div>
+                              <InputGroup label="Name" value={field.name} onChange={(e) => handleFieldChange(fieldIndex, 'name', e.target.value)} placeholder="Field Name" />
+                              <InputGroup label="Value" value={field.value} onChange={(e) => handleFieldChange(fieldIndex, 'value', e.target.value)} type="textarea" placeholder="Field Value" />
+                              <div className="flex items-center mt-2">
+                                <input type="checkbox" id={`inline-${currentEmbedIndex}-${fieldIndex}`} checked={field.inline} onChange={(e) => handleFieldChange(fieldIndex, 'inline', e.target.checked)} className="form-checkbox h-4 w-4 text-blue-600 rounded" />
+                                <label htmlFor={`inline-${currentEmbedIndex}-${fieldIndex}`} className="ml-2 text-gray-800 text-sm">Inline</label>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Components Section */}
+            <div className="bg-gray-700 p-4 rounded-lg mb-6">
+              <h2 className="text-xl font-bold mb-3 text-white flex justify-between items-center">
+                Components ({components.length})
+                <button onClick={addComponent} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded-full transition-colors duration-200">
+                  + Add
+                </button>
+              </h2>
+              {components.map((component, index) => (
+                <div key={index} className="bg-gray-600 p-4 rounded-lg mb-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-semibold text-white">Component {index + 1}</h3>
+                    <button onClick={() => removeComponent(index)} className="text-red-400 hover:text-red-500">
+                      <i className="fas fa-trash-alt"></i>
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    <InputGroup label="Type" value={component.type} onChange={(e) => handleComponentChange(index, 'type', e.target.value)} type="select">
+                      <option value="button">Button</option>
+                      {/* Select menus can be added here if needed */}
+                    </InputGroup>
+                    <InputGroup label="Label" value={component.label} onChange={(e) => handleComponentChange(index, 'label', e.target.value)} placeholder="Button Label" />
+                    <InputGroup label="Style" value={component.style} onChange={(e) => handleComponentChange(index, 'style', e.target.value)} type="select">
+                      <option value="1">Primary</option>
+                      <option value="2">Secondary</option>
+                      <option value="3">Success</option>
+                      <option value="4">Danger</option>
+                      <option value="5">Link</option>
+                    </InputGroup>
+                    <InputGroup label="Custom ID" value={component.customId} onChange={(e) => handleComponentChange(index, 'customId', e.target.value)} placeholder="custom_id" />
+                    {component.style == 5 && (
+                      <InputGroup label="URL" value={component.url} onChange={(e) => handleComponentChange(index, 'url', e.target.value)} type="url" placeholder="https://..." />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* File Upload Section */}
+            <div className="bg-gray-700 p-4 rounded-lg mb-6">
+              <h2 className="text-xl font-bold mb-3 text-white">File Upload</h2>
+              <input type="file" onChange={handleFileChange} className="block w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600"/>
+              {file && (
+                <p className="mt-2 text-sm text-gray-400">Selected file: {file.name}</p>
+              )}
+            </div>
+            
+            {/* Audio Recording Section */}
+            <div className="bg-gray-700 p-4 rounded-lg mb-6 flex flex-col items-center">
+              <h2 className="text-xl font-bold mb-3 text-white">Voice Message</h2>
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className={`py-3 px-6 rounded-full text-white font-bold transition-all duration-300 ease-in-out transform hover:scale-105 ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
+                >
+                  {isRecording ? <i className="fas fa-stop"></i> : <i className="fas fa-microphone"></i>}
+                  <span className="ml-2">{isRecording ? 'Stop Recording' : 'Start Recording'}</span>
+                </button>
+                {audioBlob && (
+                  <button onClick={playAudio} className="py-3 px-6 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-bold transition-transform duration-300 ease-in-out transform hover:scale-105">
+                    <i className="fas fa-play"></i>
+                    <span className="ml-2">Play</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col space-y-4">
+              <button
+                onClick={sendWebhook}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition-transform duration-200 transform hover:scale-105 shadow-xl"
+              >
+                Send Webhook
+              </button>
+              <button
+                onClick={generateTTS}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-xl transition-transform duration-200 transform hover:scale-105 shadow-xl"
+              >
+                Generate TTS
+              </button>
+            </div>
+
+            {/* Status Message */}
+            <div className="mt-6 text-center text-sm font-semibold text-gray-400">
+              {statusMessage}
+            </div>
+          </div>
+
+          {/* Right Panel: Preview */}
+          <div className="w-full lg:w-1/2 p-4 bg-gray-800 rounded-xl shadow-lg relative">
+            <h2 className="text-xl font-bold text-white mb-4">Live Preview</h2>
+            <div className="bg-gray-900 rounded-xl p-4 min-h-[400px]">
+              <div className="flex items-start mb-2">
+                <img src={displayAvatarUrl} alt="Avatar" className="w-12 h-12 rounded-full mr-4"/>
+                <div>
+                  <div className="flex items-baseline">
+                    <span className="font-bold text-lg mr-2 text-blue-400">{displayUsername}</span>
+                    <span className="text-xs text-gray-500">BOT</span>
+                  </div>
+                  {/* Using dangerouslySetInnerHTML to render Markdown as HTML */}
+                  {messageContent && (
+                    <div
+                      className="text-gray-300 mt-1 markdown-content"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(messageContent) }}
+                    />
+                  )}
+                  {audioBlob && (
+                    <div className="mt-2 p-2 bg-gray-700 rounded-lg flex items-center justify-between">
+                      <span className="text-sm">Voice Message Ready</span>
+                      <button onClick={playAudio} className="text-blue-400 hover:text-blue-500">
+                        <i className="fas fa-play-circle text-xl"></i>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="mt-6 flex flex-col items-center">
-                <div className="flex flex-wrap justify-center space-x-4 mb-2">
-                  <button onClick={saveApp} className="py-2 px-4 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 transition-colors mb-2 sm:mb-0">Save</button>
-                  <button onClick={loadApp} className="py-2 px-4 rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors mb-2 sm:mb-0">Load</button>
-                  <button onClick={copyJson} className="py-2 px-4 rounded-md text-white bg-gray-600 hover:bg-gray-700 transition-colors">Copy JSON</button>
+              
+              {/* Embed Preview */}
+              {(embeds.length > 0) && (
+                <div className="mt-4 border-l-4 rounded-md p-3 relative" style={{ borderColor: previewEmbed.color || '#5865f2', backgroundColor: 'rgba(52, 58, 64, 0.4)' }}>
+                  {previewEmbed.title && (
+                    <a href={previewEmbed.url} target="_blank" rel="noopener noreferrer" className="font-bold text-lg text-blue-400 hover:underline">
+                      {previewEmbed.title}
+                    </a>
+                  )}
+                  {previewEmbed.description && (
+                    <p className="text-sm text-gray-300 mt-2">{previewEmbed.description}</p>
+                  )}
+                  {(previewEmbed.fields || []).length > 0 && (
+                    <div className={`mt-2 ${previewEmbed.fields.some(f => f.inline) ? 'flex flex-wrap' : 'block'}`}>
+                      {(previewEmbed.fields || []).map((field, index) => (
+                        <div key={index} className={`mb-2 ${field.inline ? 'w-1/2 pr-2' : 'w-full'}`}>
+                          <h4 className="font-semibold text-white">{field.name}</h4>
+                          <p className="text-sm text-gray-300 whitespace-pre-wrap">{field.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {saveStatus && <p className="text-sm text-gray-400 text-center">{saveStatus}</p>}
-              </div>
+              )}
+
+              {/* Components Preview */}
+              {components.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {components.map((component, index) => (
+                    <button
+                      key={index}
+                      className={`px-4 py-2 rounded-lg font-semibold transition-colors duration-200 transform hover:scale-105 shadow-md
+                        ${component.style == 1 ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}
+                        ${component.style == 2 ? 'bg-gray-500 text-white hover:bg-gray-600' : ''}
+                        ${component.style == 3 ? 'bg-green-600 text-white hover:bg-green-700' : ''}
+                        ${component.style == 4 ? 'bg-red-600 text-white hover:bg-red-700' : ''}
+                        ${component.style == 5 ? 'text-blue-400 border border-blue-400 hover:bg-blue-400 hover:text-white' : ''}
+                      `}
+                    >
+                      {component.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
       );
     };
 
-    // Render the App component
+    const InputGroup = ({ label, value, onChange, type = 'text', placeholder, required = false, children, isValid }) => {
+      const inputId = label.toLowerCase().replace(/\s/g, '-');
+      const inputClass = "w-full p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500";
+      
+      let inputElement;
+      if (type === 'textarea') {
+        inputElement = (
+          <textarea
+            id={inputId}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            required={required}
+            className={`${inputClass} h-24 resize-none`}
+          />
+        );
+      } else if (type === 'select') {
+        inputElement = (
+          <select
+            id={inputId}
+            value={value}
+            onChange={onChange}
+            className={inputClass}
+          >
+            {children}
+          </select>
+        );
+      } else if (type === 'color') {
+        inputElement = (
+          <div className="flex items-center">
+            <input
+              type="color"
+              id={inputId}
+              value={value}
+              onChange={onChange}
+              className="w-12 h-12 p-1 rounded-md border-2 border-gray-500"
+            />
+            <input
+              type="text"
+              value={value}
+              onChange={onChange}
+              placeholder="#5865f2"
+              className="ml-4 flex-grow p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        );
+      } else {
+        inputElement = (
+          <div className="relative">
+            <input
+              type={type}
+              id={inputId}
+              value={value}
+              onChange={onChange}
+              placeholder={placeholder}
+              required={required}
+              className={inputClass}
+            />
+            {label === 'Webhook URL' && value.length > 0 && (
+              <span className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                {isValid ? (
+                  <i className="fas fa-check-circle text-green-400" title="Valid Webhook URL"></i>
+                ) : (
+                  <i className="fas fa-exclamation-circle text-red-400" title="Invalid Webhook URL"></i>
+                )}
+              </span>
+            )}
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex flex-col">
+          <label htmlFor={inputId} className="mb-1 text-sm font-medium text-gray-300">
+            {label}
+          </label>
+          {inputElement}
+        </div>
+      );
+    };
+
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
+
   </script>
 </body>
 </html>
