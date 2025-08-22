@@ -8,6 +8,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Load Font Awesome for icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" xintegrity="sha512-Fo3rlrZj/k7sLw/dZt3Rz5sP/f6KkF58pG9pGgG8+2pP+jJk2U2lK4yUu3QzB6K8CgC8vJ7vTf8lE/pL0NqP6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <!-- Custom Favicon (inline SVG) -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 C77.6 0 100 22.4 100 50 C100 77.6 77.6 100 50 100 C22.4 100 0 77.6 0 50 C0 22.4 22.4 0 50 0 Z' fill='%235865f2'/%3E%3Cpath d='M30 65 L45 80 L70 55 L55 40 Z' fill='%23fff'/%3E%3C/svg%3E">
   <style>
     body {
       font-family: 'Inter', sans-serif;
@@ -62,6 +64,10 @@
         </span>
       </div>
     );
+    
+    // Custom SVG icon as a data URL
+    const mysticHookIconUrl = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 C77.6 0 100 22.4 100 50 C100 77.6 77.6 100 50 100 C22.4 100 0 77.6 0 50 C0 22.4 22.4 0 50 0 Z' fill='%235865f2'/%3E%3Cpath d='M30 65 L45 80 L70 55 L55 40 Z' fill='%23fff'/%3E%3C/svg%3E";
+
 
     const App = () => {
       // Firebase-related state
@@ -366,7 +372,7 @@
       return (
         <div className="p-4 sm:p-6 bg-gray-900 min-h-screen font-sans antialiased text-white">
           <div className="flex justify-between items-center mb-6 flex-wrap">
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 sm:mb-0">Ultimate Webhook Builder</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 sm:mb-0">MysticHook</h1>
             {user && (
               <div className="flex items-center space-x-2 sm:space-x-4 mt-2 lg:mt-0">
                 <span className="text-gray-400 text-sm">User ID: <span className="font-mono break-all">{user?.uid}</span></span>
@@ -536,19 +542,19 @@
                       </div>
                       <div className="space-y-4 mt-4">
                         <h3 className="text-base sm:text-lg font-semibold text-white">Fields</h3>
-                        {currentEmbed.fields.map((field, index) => (
-                          <div key={index} className="bg-gray-600 p-3 rounded-md space-y-2">
+                        {currentEmbed.fields.map((field, fieldIndex) => (
+                          <div key={fieldIndex} className="bg-gray-600 p-3 rounded-md space-y-2">
                             <div className="flex space-x-2 items-center">
-                              <input type="text" value={field.name} placeholder="Field Name" className="flex-1 rounded-md bg-gray-500 border-transparent text-white" onChange={(e) => handleFieldChange(index, 'name', e.target.value)} />
+                              <input type="text" value={field.name} placeholder="Field Name" className="flex-1 rounded-md bg-gray-500 border-transparent text-white" onChange={(e) => handleFieldChange(fieldIndex, 'name', e.target.value)} />
                               <Tooltip text="Delete this field">
-                                <button onClick={() => deleteField(index)} className="p-1 rounded-full text-white bg-red-500 hover:bg-red-600 transition-colors">
+                                <button onClick={() => deleteField(fieldIndex)} className="p-1 rounded-full text-white bg-red-500 hover:bg-red-600 transition-colors">
                                   <i className="fas fa-trash-alt text-xs"></i>
                                 </button>
                               </Tooltip>
                             </div>
-                            <textarea rows="2" value={field.value} placeholder="Field Value" className="block w-full rounded-md bg-gray-500 border-transparent text-white" onChange={(e) => handleFieldChange(index, 'value', e.target.value)}></textarea>
+                            <textarea rows="2" value={field.value} placeholder="Field Value" className="block w-full rounded-md bg-gray-500 border-transparent text-white" onChange={(e) => handleFieldChange(fieldIndex, 'value', e.target.value)}></textarea>
                             <label className="flex items-center space-x-2 text-gray-400">
-                              <input type="checkbox" checked={field.inline} className="rounded text-indigo-600" onChange={(e) => handleFieldChange(index, 'inline', e.target.checked)} />
+                              <input type="checkbox" checked={field.inline} className="rounded text-indigo-600" onChange={(e) => handleFieldChange(fieldIndex, 'inline', e.target.checked)} />
                               <span>Inline</span>
                             </label>
                           </div>
@@ -618,7 +624,7 @@
               <h1 className="text-2xl sm:text-3xl font-bold text-white mb-6">Live Preview</h1>
               <div className="bg-[#36393f] p-4 rounded-lg shadow-inner">
                 <div className="flex items-start space-x-4">
-                  <img src={avatarUrl || `https://placehold.co/40x40/1e1e1e/888888?text=M`} alt="User Avatar" className="w-10 h-10 rounded-full flex-shrink-0" onError={(e) => e.target.src=`https://placehold.co/40x40/1e1e1e/888888?text=M`} />
+                  <img src={mysticHookIconUrl} alt="User Avatar" className="w-10 h-10 rounded-full flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2 mb-1">
                       <span className="font-semibold text-lg text-white">{username || 'MysticHook'}</span>
