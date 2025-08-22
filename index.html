@@ -7,7 +7,7 @@
   <!-- Load Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Load Font Awesome for icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" xintegrity="sha512-Fo3rlrZj/k7sLw/dZt3Rz5sP/f6KkF58pG9pGgG8+2pP+jJk2U2lK4yUu3QzB6K8CgC8vJ7vTf8lE/pL0NqP6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" xintegrity="sha512-Fo3rlrZj/k7sLw/dZt3Rz5sP/dZt3Rz5sP/f6KkF58pG9pGgG8+2pP+jJk2U2lK4yUu3QzB6K8CgC8vJ7vTf8lE/pL0NqP6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <!-- Custom Favicon (inline SVG) -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 C77.6 0 100 22.4 100 50 C100 77.6 77.6 100 50 100 C22.4 100 0 77.6 0 50 C0 22.4 22.4 0 50 0 Z' fill='%235865f2'/%3E%3Cpath d='M30 65 L45 80 L70 55 L55 40 Z' fill='%23fff'/%3E%3C/svg%3E">
   <style>
@@ -15,27 +15,65 @@
       font-family: 'Inter', sans-serif;
       background-color: #1a202c;
     }
+    .embed-preview {
+        border-left-color: var(--embed-color);
+    }
   </style>
 </head>
 <body class="bg-gray-900 text-white">
   <div id="root"></div>
 
-  <!-- Load React and ReactDOM from CDN -->
+  <!-- Corrected script loading order -->
+  <!-- 1. Load React and ReactDOM from CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- 2. Load Babel Standalone to transpile the JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
-  <!-- The main React app script, now using Babel -->
+    
+  <!-- 3. The main React app script with type="text/babel" -->
   <script type="text/babel">
     const { useState, useEffect } = React;
 
-    // A simple tooltip component
-    const Tooltip = ({ text, children }) => (
-      <div className="relative group inline-block">
-        {children}
-        <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-1 bg-gray-600 text-white text-xs rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          {text}
-        </span>
+    // Helper component for styled form inputs
+    const InputGroup = ({ label, value, onChange, type = 'text', placeholder, isValid, required, children }) => (
+      <div>
+        <label className="block text-sm font-medium text-gray-300 mb-1">
+          {label}
+          {required && <span className="text-red-400">*</span>}
+        </label>
+        {type === 'textarea' ? (
+          <textarea
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            className="w-full p-2 rounded-md bg-gray-600 border border-transparent focus:border-blue-500 focus:outline-none resize-y"
+          ></textarea>
+        ) : type === 'select' ? (
+          <select
+            value={value}
+            onChange={onChange}
+            className="w-full p-2 rounded-md bg-gray-600 border border-transparent focus:border-blue-500 focus:outline-none"
+          >
+            {children}
+          </select>
+        ) : type === 'color' ? (
+          <input
+            type="color"
+            value={value}
+            onChange={onChange}
+            className="w-full h-10 p-1 rounded-md bg-gray-600 border border-transparent focus:border-blue-500 focus:outline-none"
+          />
+        ) : (
+          <input
+            type={type}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            className={`w-full p-2 rounded-md bg-gray-600 border ${
+              isValid === false ? 'border-red-500' : 'border-transparent'
+            } focus:border-blue-500 focus:outline-none`}
+          />
+        )}
       </div>
     );
     
@@ -177,7 +215,7 @@
       const addComponent = () => {
         setAppState(prevState => ({
           ...prevState,
-          components: [...prevState.components, { type: 'button', label: '', customId: '', style: 1, url: '' }]
+          components: [...prevState.components, { type: 'button', label: '', style: 1, custom_id: '', url: '' }]
         }));
       };
 
@@ -189,7 +227,7 @@
       const handleComponentChange = (index, field, value) => {
         const newComponents = [...components];
         newComponents[index] = { ...newComponents[index], [field]: value };
-        setAppState(prevState => ({ ...prevState, newComponents }));
+        setAppState(prevState => ({ ...prevState, components: newComponents }));
       };
       
       const handleFileChange = (e) => {
@@ -230,6 +268,27 @@
           }
         }
         
+        // Clean and prepare components for the payload
+        const cleanedComponents = components.map(c => {
+          if (c.style == 5) {
+            // Link button
+            return {
+              type: 2,
+              style: c.style,
+              label: c.label,
+              url: c.url,
+            };
+          } else {
+            // Interactive button
+            return {
+              type: 2,
+              style: c.style,
+              label: c.label,
+              custom_id: c.custom_id,
+            };
+          }
+        });
+        
         // Final payload construction
         const payload = {
           content: messageContent,
@@ -238,22 +297,16 @@
           tts: tts,
           // Only include embeds and components if they have valid content
           ...(cleanedEmbeds.length > 0 && { embeds: cleanedEmbeds }),
-          ...(components.length > 0 && {
-            components: components.map(c => ({
+          ...(cleanedComponents.length > 0 && {
+            components: [{
               type: 1, // ActionRow
-              components: [{
-                type: c.type === 'button' ? 2 : 3, // Button or Select Menu
-                style: c.style,
-                label: c.label,
-                url: c.url,
-                custom_id: c.customId
-              }]
-            }))
+              components: cleanedComponents
+            }]
           })
         };
 
         // If the payload has no content, embeds, or components, warn the user
-        if (!payload.content && (!payload.embeds || payload.embeds.length === 0) && (!payload.components || payload.components.length === 0)) {
+        if (!payload.content && (!payload.embeds || payload.embeds.length === 0) && (!payload.components || payload.components.length === 0) && !file && !audioFile) {
           setAppState(prevState => ({ ...prevState, statusMessage: "Payload is empty. Please add content, embeds, or components." }));
           return;
         }
@@ -264,10 +317,15 @@
         let headers = {};
         
         // Check if there is a file to send
-        if (file) {
+        if (file || audioFile) {
           const formData = new FormData();
           formData.append('payload_json', JSON.stringify(payload));
-          formData.append('file', file);
+          if (file) {
+            formData.append('file', file);
+          }
+          if (audioFile) {
+            formData.append('file', audioFile, 'voice_message.webm');
+          }
           body = formData;
           console.log("Preparing to send with FormData because a file is present.");
         } else {
@@ -443,9 +501,83 @@
         html = html.replace(/^#\s(.+)/gm, '<h1 class="text-xl font-bold">$1</h1>');
         return html;
       };
-
-      // State for the Message/Embed preview
-      const previewEmbed = embeds[currentEmbedIndex] || {};
+      
+      const Preview = () => {
+        const previewEmbed = embeds[currentEmbedIndex] || {};
+        
+        return (
+          <div className="w-full lg:w-1/2 p-4 lg:p-8 bg-gray-800 rounded-xl shadow-lg flex flex-col h-full">
+            <h2 className="text-xl font-extrabold text-blue-400 mb-6">Live Preview</h2>
+            <div className="flex-1 overflow-y-auto p-4 bg-gray-700 rounded-lg">
+                <div className="flex items-start mb-4">
+                    <img src={displayAvatarUrl || defaultAvatarSvg} alt="User Avatar" 
+                         className={`w-12 h-12 rounded-full mr-4 ${isAvatarLoading ? 'animate-pulse bg-gray-600' : ''}`} 
+                         onError={(e) => { e.target.src = defaultAvatarSvg; }} />
+                    <div>
+                        <div className="flex items-baseline">
+                            <span className="font-semibold text-gray-100">{displayUsername}</span>
+                            <span className="text-xs text-gray-400 ml-2">Today at {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        {messageContent && (
+                            <div className="text-gray-200 mt-1" dangerouslySetInnerHTML={{ __html: renderMarkdown(messageContent) }} />
+                        )}
+                        {audioBlob && (
+                          <div className="mt-2 flex items-center bg-gray-800 p-2 rounded-lg">
+                              <i className="fas fa-volume-up text-blue-400 mr-2"></i>
+                              <span className="text-sm text-gray-300">Voice Message Preview</span>
+                              <button onClick={playAudio} className="ml-4 text-blue-400 hover:text-blue-500">
+                                  <i className="fas fa-play"></i>
+                              </button>
+                          </div>
+                        )}
+                        {file && (
+                           <div className="mt-2 flex items-center bg-gray-800 p-2 rounded-lg">
+                               <i className="fas fa-file-upload text-blue-400 mr-2"></i>
+                               <span className="text-sm text-gray-300">{file.name}</span>
+                           </div>
+                        )}
+                        {embeds.length > 0 && embeds.map((embed, index) => (
+                           <div key={index} className="mt-2 p-3 rounded-lg border-l-4" style={{ borderColor: embed.color || '#5865F2' }}>
+                               {embed.title && <h3 className="font-bold text-gray-100">{embed.title}</h3>}
+                               {embed.description && <p className="text-sm text-gray-300 mt-1">{embed.description}</p>}
+                               <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                   {(embed.fields || []).map((field, fieldIndex) => (
+                                       <div key={fieldIndex} className={`${field.inline ? '' : 'col-span-2'}`}>
+                                           <h4 className="font-semibold text-gray-200">{field.name}</h4>
+                                           <p className="text-sm text-gray-400">{field.value}</p>
+                                       </div>
+                                   ))}
+                               </div>
+                           </div>
+                       ))}
+                       {components.length > 0 && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                                {components.map((comp, index) => (
+                                    <button
+                                        key={index}
+                                        className={`px-4 py-2 rounded-md font-semibold transition-colors duration-200 
+                                            ${comp.style == 1 ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+                                            ${comp.style == 2 ? 'bg-gray-600 hover:bg-gray-700 text-white' : ''}
+                                            ${comp.style == 3 ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
+                                            ${comp.style == 4 ? 'bg-red-600 hover:bg-red-700 text-white' : ''}
+                                            ${comp.style == 5 ? 'text-blue-400 hover:underline' : ''}`}
+                                    >
+                                        {comp.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+            
+            {/* Status message at the bottom of the preview */}
+            <div className="mt-4 text-center">
+                <p className={`text-sm ${statusMessage.includes('Error') ? 'text-red-400' : 'text-green-400'}`}>{statusMessage}</p>
+            </div>
+          </div>
+        )
+      }
 
       // Voice message recording functions
       const startRecording = async () => {
@@ -622,9 +754,10 @@
                       <option value="4">Danger</option>
                       <option value="5">Link</option>
                     </InputGroup>
-                    <InputGroup label="Custom ID" value={component.customId} onChange={(e) => handleComponentChange(index, 'customId', e.target.value)} placeholder="custom_id" />
-                    {component.style == 5 && (
+                    {component.style == 5 ? (
                       <InputGroup label="URL" value={component.url} onChange={(e) => handleComponentChange(index, 'url', e.target.value)} type="url" placeholder="https://..." />
+                    ) : (
+                      <InputGroup label="Custom ID" value={component.custom_id} onChange={(e) => handleComponentChange(index, 'custom_id', e.target.value)} placeholder="e.g. unique_button_id" />
                     )}
                   </div>
                 </div>
@@ -657,205 +790,42 @@
                     <span className="ml-2">Play</span>
                   </button>
                 )}
+                <button onClick={generateTTS} className="py-3 px-6 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-bold transition-transform duration-300 ease-in-out transform hover:scale-105">
+                    <i className="fas fa-volume-up"></i>
+                    <span className="ml-2">TTS</span>
+                </button>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col space-y-4">
-              <button
-                onClick={sendWebhook}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition-transform duration-200 transform hover:scale-105 shadow-xl"
-              >
-                Send Webhook
-              </button>
-              <button
-                onClick={generateTTS}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-xl transition-transform duration-200 transform hover:scale-105 shadow-xl"
-              >
-                Generate TTS
-              </button>
-            </div>
-
-            {/* Status Message */}
-            <div className="mt-6 text-center text-sm font-semibold text-gray-400">
-              {statusMessage}
+            <div className="bg-gray-700 p-4 rounded-lg flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 sm:space-x-4">
+                <button
+                    onClick={sendWebhook}
+                    className="w-full sm:w-auto px-6 py-3 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors duration-200 transform hover:scale-105"
+                >
+                    <i className="fas fa-paper-plane mr-2"></i>
+                    Send Webhook
+                </button>
+                <button
+                    onClick={clearAllData}
+                    className="w-full sm:w-auto px-6 py-3 rounded-lg font-bold text-gray-300 bg-gray-600 hover:bg-gray-500 transition-colors duration-200 transform hover:scale-105"
+                >
+                    <i className="fas fa-eraser mr-2"></i>
+                    Clear All
+                </button>
             </div>
           </div>
-
-          {/* Right Panel: Preview */}
-          <div className="w-full lg:w-1/2 p-4 bg-gray-800 rounded-xl shadow-lg relative">
-            <h2 className="text-xl font-bold text-white mb-4">Live Preview</h2>
-            <div className="bg-gray-900 rounded-xl p-4 min-h-[400px]">
-              <div className="flex items-start mb-2">
-                {/* Avatar Preview */}
-                <div className="w-12 h-12 rounded-full mr-4 flex-shrink-0">
-                  {isAvatarLoading ? (
-                    <div className="w-full h-full rounded-full bg-gray-600 animate-pulse"></div>
-                  ) : (
-                    <img
-                      src={displayAvatarUrl || defaultAvatarSvg}
-                      alt="Avatar"
-                      className="w-full h-full rounded-full object-cover"
-                      onError={(e) => {
-                          e.target.src = defaultAvatarSvg;
-                      }}
-                    />
-                  )}
-                </div>
-                <div>
-                  <div className="flex items-baseline">
-                    <span className="font-bold text-lg mr-2 text-blue-400">{displayUsername}</span>
-                    <span className="text-xs text-gray-500">BOT</span>
-                  </div>
-                  {/* Using dangerouslySetInnerHTML to render Markdown as HTML */}
-                  {messageContent && (
-                    <div
-                      className="text-gray-300 mt-1 markdown-content"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(messageContent) }}
-                    />
-                  )}
-                  {audioBlob && (
-                    <div className="mt-2 p-2 bg-gray-700 rounded-lg flex items-center justify-between">
-                      <span className="text-sm">Voice Message Ready</span>
-                      <button onClick={playAudio} className="text-blue-400 hover:text-blue-500">
-                        <i className="fas fa-play-circle text-xl"></i>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              {/* Embed Preview */}
-              {(embeds.length > 0) && (
-                <div className="mt-4 border-l-4 rounded-md p-3 relative" style={{ borderColor: previewEmbed.color || '#5865f2', backgroundColor: 'rgba(52, 58, 64, 0.4)' }}>
-                  {previewEmbed.title && (
-                    <a href={previewEmbed.url} target="_blank" rel="noopener noreferrer" className="font-bold text-lg text-blue-400 hover:underline">
-                      {previewEmbed.title}
-                    </a>
-                  )}
-                  {previewEmbed.description && (
-                    <p className="text-sm text-gray-300 mt-2">{previewEmbed.description}</p>
-                  )}
-                  {(previewEmbed.fields || []).length > 0 && (
-                    <div className={`mt-2 ${previewEmbed.fields.some(f => f.inline) ? 'flex flex-wrap' : 'block'}`}>
-                      {(previewEmbed.fields || []).map((field, index) => (
-                        <div key={index} className={`mb-2 ${field.inline ? 'w-1/2 pr-2' : 'w-full'}`}>
-                          <h4 className="font-semibold text-white">{field.name}</h4>
-                          <p className="text-sm text-gray-300 whitespace-pre-wrap">{field.value}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Components Preview */}
-              {components.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {components.map((component, index) => (
-                    <button
-                      key={index}
-                      className={`px-4 py-2 rounded-lg font-semibold transition-colors duration-200 transform hover:scale-105 shadow-md
-                        ${component.style == 1 ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}
-                        ${component.style == 2 ? 'bg-gray-500 text-white hover:bg-gray-600' : ''}
-                        ${component.style == 3 ? 'bg-green-600 text-white hover:bg-green-700' : ''}
-                        ${component.style == 4 ? 'bg-red-600 text-white hover:bg-red-700' : ''}
-                        ${component.style == 5 ? 'text-blue-400 border border-blue-400 hover:bg-blue-400 hover:text-white' : ''}
-                      `}
-                    >
-                      {component.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          
+          {/* Right Panel: Live Preview */}
+          <Preview />
         </div>
       );
     };
 
-    const InputGroup = ({ label, value, onChange, type = 'text', placeholder, required = false, children, isValid }) => {
-      const inputId = label.toLowerCase().replace(/\s/g, '-');
-      const inputClass = "w-full p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500";
-      
-      let inputElement;
-      if (type === 'textarea') {
-        inputElement = (
-          <textarea
-            id={inputId}
-            value={value}
-            onChange={onChange}
-            placeholder={placeholder}
-            required={required}
-            className={`${inputClass} h-24 resize-none`}
-          />
-        );
-      } else if (type === 'select') {
-        inputElement = (
-          <select
-            id={inputId}
-            value={value}
-            onChange={onChange}
-            className={inputClass}
-          >
-            {children}
-          </select>
-        );
-      } else if (type === 'color') {
-        inputElement = (
-          <div className="flex items-center">
-            <input
-              type="color"
-              id={inputId}
-              value={value}
-              onChange={onChange}
-              className="w-12 h-12 p-1 rounded-md border-2 border-gray-500"
-            />
-            <input
-              type="text"
-              value={value}
-              onChange={onChange}
-              placeholder="#5865f2"
-              className="ml-4 flex-grow p-2 rounded-md bg-gray-600 text-white border border-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        );
-      } else {
-        inputElement = (
-          <div className="relative">
-            <input
-              type={type}
-              id={inputId}
-              value={value}
-              onChange={onChange}
-              placeholder={placeholder}
-              required={required}
-              className={inputClass}
-            />
-            {label === 'Webhook URL' && value.length > 0 && (
-              <span className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                {isValid ? (
-                  <i className="fas fa-check-circle text-green-400" title="Valid Webhook URL"></i>
-                ) : (
-                  <i className="fas fa-exclamation-circle text-red-400" title="Invalid Webhook URL"></i>
-                )}
-              </span>
-            )}
-          </div>
-        );
-      }
-
-      return (
-        <div className="flex flex-col">
-          <label htmlFor={inputId} className="mb-1 text-sm font-medium text-gray-300">
-            {label}
-          </label>
-          {inputElement}
-        </div>
-      );
-    };
-
-    const root = ReactDOM.createRoot(document.getElementById('root'));
+    // The root of the React app
+    // Using the modern createRoot method, which is the correct way to render in React 18+
+    const domNode = document.getElementById('root');
+    const root = ReactDOM.createRoot(domNode);
     root.render(<App />);
 
   </script>
