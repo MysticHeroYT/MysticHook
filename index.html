@@ -42,17 +42,9 @@
     // Custom SVG icon as a data URL
     const mysticHookIconUrl = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 C77.6 0 100 22.4 100 50 C100 77.6 77.6 100 50 100 C22.4 100 0 77.6 0 50 C0 22.4 22.4 0 50 0 Z' fill='%235865f2'/%3E%3Cpath d='M30 65 L45 80 L70 55 L55 40 Z' fill='%23fff'/%3E%3C/svg%3E";
 
-    // Initial state for the app
+    // Initial state for the app, now with an empty embeds array
     const initialAppState = {
-      embeds: [
-        {
-          title: 'Welcome to MysticHook!',
-          description: "Start customizing your Discord message here. Use the form on the left to add text, embeds, and buttons, and see a live preview on the right.",
-          color: '#5865f2',
-          url: 'https://discord.com/',
-          fields: [{ name: "Live Preview", value: "This section updates automatically as you type.", inline: true }]
-        }
-      ],
+      embeds: [],
       currentEmbedIndex: 0,
       components: [],
       messageContent: '',
@@ -199,9 +191,12 @@
         setAppState(prevState => ({ ...prevState, file: e.target.files[0] }));
       };
 
-      // Function to send the webhook
+      // Function to send the webhook with detailed logging
       const sendWebhook = async () => {
+        console.log("Starting webhook send process...");
+
         if (!webhookUrl || !isWebhookValid) {
+          console.error("Validation failed: Webhook URL is not valid or is empty.");
           setAppState(prevState => ({ ...prevState, statusMessage: "Please enter a valid Webhook URL." }));
           return;
         }
@@ -224,10 +219,13 @@
           }))
         };
         
+        console.log("Payload to be sent:", payload);
+
         const formData = new FormData();
         formData.append('payload_json', JSON.stringify(payload));
         if (file) {
           formData.append('file', file);
+          console.log("File detected:", file.name);
         }
 
         setAppState(prevState => ({ ...prevState, statusMessage: "Sending..." }));
@@ -240,6 +238,8 @@
           if (messageId) {
             url.searchParams.append('wait', 'true'); // For message editing, though not fully implemented here
           }
+          
+          console.log("Sending POST request to:", url.href);
 
           const response = await fetch(url.href, {
             method: 'POST',
@@ -247,14 +247,18 @@
           });
 
           if (response.ok) {
+            console.log("Webhook sent successfully!");
             const data = await response.json();
+            console.log("Response data:", data);
             setAppState(prevState => ({ ...prevState, statusMessage: "Webhook sent successfully!" }));
           } else {
             const errorText = await response.text();
+            console.error(`Webhook failed with status ${response.status}: ${response.statusText}`);
+            console.error("Detailed error response:", errorText);
             setAppState(prevState => ({ ...prevState, statusMessage: `Error sending webhook: ${response.status} ${response.statusText}. Details: ${errorText}` }));
           }
         } catch (error) {
-          console.error("Error sending webhook:", error);
+          console.error("An unhandled network or API error occurred:", error);
           setAppState(prevState => ({ ...prevState, statusMessage: `Failed to send webhook. Check the URL and try again.` }));
         }
       };
@@ -271,7 +275,7 @@
             parts: [{ text: messageContent }]
           }],
           generationConfig: {
-            responseModalities: ["AUDIO"],
+            responseModality: "AUDIO",
             speechConfig: {
               voiceConfig: {
                 prebuiltVoiceConfig: { voiceName: "Kore" }
@@ -623,12 +627,6 @@
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-xl transition-transform duration-200 transform hover:scale-105 shadow-xl"
               >
                 Generate TTS
-              </button>
-              <button
-                onClick={clearAllData}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition-transform duration-200 transform hover:scale-105 shadow-xl"
-              >
-                Clear All
               </button>
             </div>
 
