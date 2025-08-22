@@ -42,9 +42,9 @@
     // Custom SVG icon as a data URL
     const mysticHookIconUrl = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 C77.6 0 100 22.4 100 50 C100 77.6 77.6 100 50 100 C22.4 100 0 77.6 0 50 C0 22.4 22.4 0 50 0 Z' fill='%235865f2'/%3E%3Cpath d='M30 65 L45 80 L70 55 L55 40 Z' fill='%23fff'/%3E%3C/svg%3E";
 
-    const App = () => {
-      // Core webhook state
-      const [embeds, setEmbeds] = useState([
+    // Initial state for the app
+    const initialAppState = {
+      embeds: [
         {
           title: 'Welcome to MysticHook!',
           description: "Start customizing your Discord message here. Use the form on the left to add text, embeds, and buttons, and see a live preview on the right.",
@@ -52,33 +52,42 @@
           url: 'https://discord.com/',
           fields: [{ name: "Live Preview", value: "This section updates automatically as you type.", inline: true }]
         }
-      ]);
-      const [currentEmbedIndex, setCurrentEmbedIndex] = useState(0);
-      const [components, setComponents] = useState([]);
-      const [messageContent, setMessageContent] = useState('');
-      const [username, setUsername] = useState('MysticHook');
-      const [avatarUrl, setAvatarUrl] = useState('');
-      const [webhookUrl, setWebhookUrl] = useState('');
-      const [isWebhookValid, setIsWebhookValid] = useState(false);
-      const [tts, setTts] = useState(false);
-      const [threadId, setThreadId] = useState('');
-      const [messageId, setMessageId] = useState('');
-      const [file, setFile] = useState(null);
-      const [audioFile, setAudioFile] = useState(null);
-      const [isRecording, setIsRecording] = useState(false);
-      const [recorder, setRecorder] = useState(null);
-      const [statusMessage, setStatusMessage] = useState('');
-      // State for webhook's live info
-      const [liveUsername, setLiveUsername] = useState('');
-      const [liveAvatarUrl, setLiveAvatarUrl] = useState('');
+      ],
+      currentEmbedIndex: 0,
+      components: [],
+      messageContent: '',
+      username: 'MysticHook',
+      avatarUrl: '',
+      webhookUrl: '',
+      isWebhookValid: false,
+      tts: false,
+      threadId: '',
+      messageId: '',
+      file: null,
+      audioFile: null,
+      isRecording: false,
+      recorder: null,
+      statusMessage: '',
+      liveUsername: '',
+      liveAvatarUrl: '',
+      audioBlob: null
+    };
 
-      // Voice message state
-      const [audioBlob, setAudioBlob] = useState(null);
+    const App = () => {
+      // Core webhook state
+      const [appState, setAppState] = useState(initialAppState);
+
+      // Destructure state for easier access
+      const { 
+        embeds, currentEmbedIndex, components, messageContent, username, avatarUrl,
+        webhookUrl, isWebhookValid, tts, threadId, messageId, file, audioFile,
+        isRecording, recorder, statusMessage, liveUsername, liveAvatarUrl, audioBlob
+      } = appState;
 
       // Effect to validate the webhook URL and fetch its info
       useEffect(() => {
         const isValid = webhookUrl.startsWith('https://discord.com/api/webhooks/');
-        setIsWebhookValid(isValid);
+        setAppState(prevState => ({ ...prevState, isWebhookValid: isValid }));
         
         if (isValid) {
           fetch(webhookUrl, { method: 'GET' })
@@ -90,33 +99,40 @@
               }
             })
             .then(data => {
-              setLiveUsername(data.name);
-              // Construct Discord avatar URL
+              const newLiveUsername = data.name;
               const avatar = data.avatar;
+              let newLiveAvatarUrl = '';
               if (avatar) {
                 const extension = avatar.startsWith('a_') ? 'gif' : 'png';
-                setLiveAvatarUrl(`https://cdn.discordapp.com/avatars/${data.id}/${avatar}.${extension}`);
+                newLiveAvatarUrl = `https://cdn.discordapp.com/avatars/${data.id}/${avatar}.${extension}`;
               } else {
-                // Default avatar if none is set
-                setLiveAvatarUrl(`https://discord.com/assets/f9bb9c4af2b9c32de7868010385d564b.svg`);
+                newLiveAvatarUrl = `https://discord.com/assets/f9bb9c4af2b9c32de7868010385d564b.svg`;
               }
+              setAppState(prevState => ({ 
+                ...prevState, 
+                liveUsername: newLiveUsername, 
+                liveAvatarUrl: newLiveAvatarUrl 
+              }));
             })
             .catch(error => {
               console.error("Error fetching webhook info:", error);
-              setLiveUsername('');
-              setLiveAvatarUrl('');
+              setAppState(prevState => ({ ...prevState, liveUsername: '', liveAvatarUrl: '' }));
             });
         } else {
-          setLiveUsername('');
-          setLiveAvatarUrl('');
+          setAppState(prevState => ({ ...prevState, liveUsername: '', liveAvatarUrl: '' }));
         }
       }, [webhookUrl]);
+      
+      // Function to clear all data and reset to initial state
+      const clearAllData = () => {
+        setAppState(initialAppState);
+      };
 
       // State management for embeds and fields
       const handleEmbedChange = (field, value) => {
         const newEmbeds = [...embeds];
         newEmbeds[currentEmbedIndex] = { ...newEmbeds[currentEmbedIndex], [field]: value };
-        setEmbeds(newEmbeds);
+        setAppState(prevState => ({ ...prevState, embeds: newEmbeds }));
       };
 
       const handleFieldChange = (fieldIndex, fieldName, value) => {
@@ -127,59 +143,66 @@
         }
         newFields[fieldIndex][fieldName] = value;
         newEmbeds[currentEmbedIndex].fields = newFields;
-        setEmbeds(newEmbeds);
+        setAppState(prevState => ({ ...prevState, embeds: newEmbeds }));
       };
 
       const addEmbed = () => {
-        setEmbeds([...embeds, { title: '', description: '', color: '', fields: [] }]);
-        setCurrentEmbedIndex(embeds.length);
+        setAppState(prevState => ({ 
+          ...prevState, 
+          embeds: [...prevState.embeds, { title: '', description: '', color: '', fields: [] }],
+          currentEmbedIndex: prevState.embeds.length
+        }));
       };
 
       const removeEmbed = (index) => {
         const newEmbeds = embeds.filter((_, i) => i !== index);
-        setEmbeds(newEmbeds);
-        if (currentEmbedIndex >= newEmbeds.length) {
-          setCurrentEmbedIndex(newEmbeds.length > 0 ? newEmbeds.length - 1 : 0);
+        let newCurrentIndex = currentEmbedIndex;
+        if (newCurrentIndex >= newEmbeds.length) {
+          newCurrentIndex = newEmbeds.length > 0 ? newEmbeds.length - 1 : 0;
         }
+        setAppState(prevState => ({ ...prevState, embeds: newEmbeds, currentEmbedIndex: newCurrentIndex }));
       };
 
       const addField = () => {
         const newEmbeds = [...embeds];
         const currentFields = newEmbeds[currentEmbedIndex].fields || [];
         newEmbeds[currentEmbedIndex].fields = [...currentFields, { name: '', value: '', inline: false }];
-        setEmbeds(newEmbeds);
+        setAppState(prevState => ({ ...prevState, embeds: newEmbeds }));
       };
 
       const removeField = (fieldIndex) => {
         const newEmbeds = [...embeds];
         newEmbeds[currentEmbedIndex].fields = newEmbeds[currentEmbedIndex].fields.filter((_, i) => i !== fieldIndex);
-        setEmbeds(newEmbeds);
+        setAppState(prevState => ({ ...prevState, embeds: newEmbeds }));
       };
 
       // State management for components (buttons/select menus)
       const addComponent = () => {
-        setComponents([...components, { type: 'button', label: '', customId: '', style: 1, url: '' }]);
+        setAppState(prevState => ({
+          ...prevState,
+          components: [...prevState.components, { type: 'button', label: '', customId: '', style: 1, url: '' }]
+        }));
       };
 
       const removeComponent = (index) => {
         const newComponents = components.filter((_, i) => i !== index);
-        setComponents(newComponents);
+        setAppState(prevState => ({ ...prevState, components: newComponents }));
       };
 
       const handleComponentChange = (index, field, value) => {
         const newComponents = [...components];
         newComponents[index] = { ...newComponents[index], [field]: value };
-        setComponents(newComponents);
+        setAppState(prevState => ({ ...prevState, components: newComponents }));
       };
       
       const handleFileChange = (e) => {
-        setFile(e.target.files[0]);
+        setAppState(prevState => ({ ...prevState, file: e.target.files[0] }));
       };
 
       // Function to send the webhook
       const sendWebhook = async () => {
         if (!webhookUrl || !isWebhookValid) {
-          setStatusMessage("Please enter a valid Webhook URL.");
+          setAppState(prevState => ({ ...prevState, statusMessage: "Please enter a valid Webhook URL." }));
           return;
         }
 
@@ -207,7 +230,7 @@
           formData.append('file', file);
         }
 
-        setStatusMessage("Sending...");
+        setAppState(prevState => ({ ...prevState, statusMessage: "Sending..." }));
         
         try {
           const url = new URL(webhookUrl);
@@ -225,23 +248,21 @@
 
           if (response.ok) {
             const data = await response.json();
-            setStatusMessage("Webhook sent successfully!");
-            // You can optionally get the message ID here for editing
-            // setMessageId(data.id);
+            setAppState(prevState => ({ ...prevState, statusMessage: "Webhook sent successfully!" }));
           } else {
             const errorText = await response.text();
-            setStatusMessage(`Error sending webhook: ${response.status} ${response.statusText}. Details: ${errorText}`);
+            setAppState(prevState => ({ ...prevState, statusMessage: `Error sending webhook: ${response.status} ${response.statusText}. Details: ${errorText}` }));
           }
         } catch (error) {
           console.error("Error sending webhook:", error);
-          setStatusMessage(`Failed to send webhook. Check the URL and try again.`);
+          setAppState(prevState => ({ ...prevState, statusMessage: `Failed to send webhook. Check the URL and try again.` }));
         }
       };
 
       // Function to generate and play TTS audio
       const generateTTS = async () => {
         if (!messageContent) {
-          setStatusMessage("Please enter a message to generate TTS.");
+          setAppState(prevState => ({ ...prevState, statusMessage: "Please enter a message to generate TTS." }));
           return;
         }
 
@@ -262,7 +283,7 @@
         const apiKey = ""; // Canvas will provide this
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
         
-        setStatusMessage("Generating TTS audio...");
+        setAppState(prevState => ({ ...prevState, statusMessage: "Generating TTS audio..." }));
         try {
           const response = await fetch(apiUrl, {
             method: 'POST',
@@ -294,16 +315,16 @@
             
             const audio = new Audio(audioUrl);
             audio.play();
-            setStatusMessage("TTS audio is playing...");
-            audio.onended = () => setStatusMessage("TTS playback finished.");
+            setAppState(prevState => ({ ...prevState, statusMessage: "TTS audio is playing..." }));
+            audio.onended = () => setAppState(prevState => ({ ...prevState, statusMessage: "TTS playback finished." }));
 
           } else {
-            setStatusMessage("TTS generation failed. No audio data received.");
+            setAppState(prevState => ({ ...prevState, statusMessage: "TTS generation failed. No audio data received." }));
           }
 
         } catch (error) {
           console.error("Error generating or playing TTS:", error);
-          setStatusMessage(`TTS Error: ${error.message}`);
+          setAppState(prevState => ({ ...prevState, statusMessage: `TTS Error: ${error.message}` }));
         }
       };
 
@@ -386,25 +407,21 @@
           };
           newRecorder.onstop = () => {
             const newAudioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            setAudioBlob(newAudioBlob);
-            setAudioFile(newAudioBlob);
-            setStatusMessage("Recording stopped. Audio saved.");
+            setAppState(prevState => ({ ...prevState, audioBlob: newAudioBlob, audioFile: newAudioBlob, statusMessage: "Recording stopped. Audio saved." }));
             stream.getTracks().forEach(track => track.stop());
           };
           newRecorder.start();
-          setRecorder(newRecorder);
-          setIsRecording(true);
-          setStatusMessage("Recording started...");
+          setAppState(prevState => ({ ...prevState, recorder: newRecorder, isRecording: true, statusMessage: "Recording started..." }));
         } catch (err) {
           console.error('Failed to start recording:', err);
-          setStatusMessage("Error: Failed to start recording. Ensure you have a microphone.");
+          setAppState(prevState => ({ ...prevState, statusMessage: "Error: Failed to start recording. Ensure you have a microphone." }));
         }
       };
       
       const stopRecording = () => {
         if (recorder) {
           recorder.stop();
-          setIsRecording(false);
+          setAppState(prevState => ({ ...prevState, isRecording: false }));
         }
       };
 
@@ -413,8 +430,8 @@
           const audioUrl = URL.createObjectURL(audioBlob);
           const audio = new Audio(audioUrl);
           audio.play();
-          setStatusMessage("Playing voice message...");
-          audio.onended = () => setStatusMessage("Voice message playback finished.");
+          setAppState(prevState => ({ ...prevState, statusMessage: "Playing voice message..." }));
+          audio.onended = () => setAppState(prevState => ({ ...prevState, statusMessage: "Voice message playback finished." }));
         }
       };
 
@@ -440,18 +457,18 @@
                 <InputGroup
                   label="Webhook URL"
                   value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  onChange={(e) => setAppState(prevState => ({ ...prevState, webhookUrl: e.target.value }))}
                   type="url"
                   placeholder="https://discord.com/api/webhooks/..."
                   required
                   isValid={isWebhookValid}
                 />
-                <InputGroup label="Username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="MysticHook" />
-                <InputGroup label="Avatar URL" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} type="url" placeholder="https://..." />
-                <InputGroup label="Message Content" value={messageContent} onChange={(e) => setMessageContent(e.target.value)} type="textarea" placeholder="Hello, this is my webhook message!" />
-                <InputGroup label="Thread ID (Optional)" value={threadId} onChange={(e) => setThreadId(e.target.value)} placeholder="e.g. 1234567890" />
+                <InputGroup label="Username" value={username} onChange={(e) => setAppState(prevState => ({ ...prevState, username: e.target.value }))} placeholder="MysticHook" />
+                <InputGroup label="Avatar URL" value={avatarUrl} onChange={(e) => setAppState(prevState => ({ ...prevState, avatarUrl: e.target.value }))} type="url" placeholder="https://..." />
+                <InputGroup label="Message Content" value={messageContent} onChange={(e) => setAppState(prevState => ({ ...prevState, messageContent: e.target.value }))} type="textarea" placeholder="Hello, this is my webhook message!" />
+                <InputGroup label="Thread ID (Optional)" value={threadId} onChange={(e) => setAppState(prevState => ({ ...prevState, threadId: e.target.value }))} placeholder="e.g. 1234567890" />
                 <div className="flex items-center">
-                  <input type="checkbox" id="ttsCheckbox" checked={tts} onChange={(e) => setTts(e.target.checked)} className="form-checkbox h-5 w-5 text-blue-600 rounded" />
+                  <input type="checkbox" id="ttsCheckbox" checked={tts} onChange={(e) => setAppState(prevState => ({ ...prevState, tts: e.target.checked }))} className="form-checkbox h-5 w-5 text-blue-600 rounded" />
                   <label htmlFor="ttsCheckbox" className="ml-2 text-gray-300">Text-to-Speech (TTS)</label>
                 </div>
               </div>
@@ -471,7 +488,7 @@
                     {embeds.map((_, index) => (
                       <button
                         key={index}
-                        onClick={() => setCurrentEmbedIndex(index)}
+                        onClick={() => setAppState(prevState => ({ ...prevState, currentEmbedIndex: index }))}
                         className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
                           currentEmbedIndex === index ? 'bg-blue-600 text-white' : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
                         }`}
@@ -606,6 +623,12 @@
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-xl transition-transform duration-200 transform hover:scale-105 shadow-xl"
               >
                 Generate TTS
+              </button>
+              <button
+                onClick={clearAllData}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition-transform duration-200 transform hover:scale-105 shadow-xl"
+              >
+                Clear All
               </button>
             </div>
 
