@@ -40,7 +40,10 @@
     );
     
     // Custom SVG icon as a data URL
-    const mysticHookIconUrl = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 C77.6 0 100 22.4 100 50 C100 77.6 77.6 100 50 100 C22.4 100 0 77.6 0 50 C0 22.4 22.4 0 50 0 Z' fill='%235865f2'/%E3%88%9C%3Cpath d='M30 65 L45 80 L70 55 L55 40 Z' fill='%23fff'/%E3%88%9C/svg%3E";
+    const mysticHookIconUrl = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 C77.6 0 100 22.4 100 50 C100 77.6 77.6 100 50 100 C22.4 100 0 77.6 0 50 C0 22.4 22.4 0 50 0 Z' fill='%235865f2'/%3E%3Cpath d='M30 65 L45 80 L70 55 L55 40 Z' fill='%23fff'/%3E%3C/svg%3E";
+
+    // Fallback avatar as an inline SVG
+    const defaultAvatarSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" width="48px" height="48px"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
 
     // Initial state for the app, now with an empty embeds array
     const initialAppState = {
@@ -62,7 +65,8 @@
       statusMessage: '',
       liveUsername: '',
       liveAvatarUrl: '',
-      audioBlob: null
+      audioBlob: null,
+      isAvatarLoading: false
     };
 
     const App = () => {
@@ -73,7 +77,8 @@
       const { 
         embeds, currentEmbedIndex, components, messageContent, username, avatarUrl,
         webhookUrl, isWebhookValid, tts, threadId, messageId, file, audioFile,
-        isRecording, recorder, statusMessage, liveUsername, liveAvatarUrl, audioBlob
+        isRecording, recorder, statusMessage, liveUsername, liveAvatarUrl, audioBlob,
+        isAvatarLoading
       } = appState;
 
       // Effect to validate the webhook URL and fetch its info
@@ -82,6 +87,7 @@
         setAppState(prevState => ({ ...prevState, isWebhookValid: isValid }));
         
         if (isValid) {
+          setAppState(prevState => ({ ...prevState, isAvatarLoading: true }));
           fetch(webhookUrl, { method: 'GET' })
             .then(response => {
               if (response.ok) {
@@ -97,18 +103,17 @@
               if (avatar) {
                 const extension = avatar.startsWith('a_') ? 'gif' : 'png';
                 newLiveAvatarUrl = `https://cdn.discordapp.com/avatars/${data.id}/${avatar}.${extension}`;
-              } else {
-                newLiveAvatarUrl = `https://discord.com/assets/f9bb9c4af2b9c32de7868010385d564b.svg`;
               }
               setAppState(prevState => ({ 
                 ...prevState, 
                 liveUsername: newLiveUsername, 
-                liveAvatarUrl: newLiveAvatarUrl 
+                liveAvatarUrl: newLiveAvatarUrl,
+                isAvatarLoading: false
               }));
             })
             .catch(error => {
               console.error("Error fetching webhook info:", error);
-              setAppState(prevState => ({ ...prevState, liveUsername: '', liveAvatarUrl: '' }));
+              setAppState(prevState => ({ ...prevState, liveUsername: '', liveAvatarUrl: '', isAvatarLoading: false }));
             });
         } else {
           setAppState(prevState => ({ ...prevState, liveUsername: '', liveAvatarUrl: '' }));
@@ -255,11 +260,20 @@
 
         console.log("Final payload to be sent:", payload);
 
-        const formData = new FormData();
-        formData.append('payload_json', JSON.stringify(payload));
+        let body;
+        let headers = {};
+        
+        // Check if there is a file to send
         if (file) {
+          const formData = new FormData();
+          formData.append('payload_json', JSON.stringify(payload));
           formData.append('file', file);
-          console.log("File detected:", file.name);
+          body = formData;
+          console.log("Preparing to send with FormData because a file is present.");
+        } else {
+          body = JSON.stringify(payload);
+          headers['Content-Type'] = 'application/json';
+          console.log("Preparing to send with JSON body.");
         }
 
         setAppState(prevState => ({ ...prevState, statusMessage: "Sending..." }));
@@ -277,7 +291,8 @@
 
           const response = await fetch(url.href, {
             method: 'POST',
-            body: formData,
+            headers: headers,
+            body: body,
           });
 
           if (response.ok) {
@@ -475,9 +490,8 @@
 
       // Choose which username and avatar to display
       const displayUsername = liveUsername || username || 'MysticHook';
-      const displayAvatarUrl = liveAvatarUrl || avatarUrl || 'https://placehold.co/100x100/5865f2/ffffff?text=U';
-
-
+      const displayAvatarUrl = avatarUrl || liveAvatarUrl || '';
+      
       return (
         <div className="flex flex-col lg:flex-row h-full min-h-screen bg-gray-900 text-gray-100 p-4 lg:p-8">
           {/* Left Panel: Controls */}
@@ -675,7 +689,21 @@
             <h2 className="text-xl font-bold text-white mb-4">Live Preview</h2>
             <div className="bg-gray-900 rounded-xl p-4 min-h-[400px]">
               <div className="flex items-start mb-2">
-                <img src={displayAvatarUrl} alt="Avatar" className="w-12 h-12 rounded-full mr-4"/>
+                {/* Avatar Preview */}
+                <div className="w-12 h-12 rounded-full mr-4 flex-shrink-0">
+                  {isAvatarLoading ? (
+                    <div className="w-full h-full rounded-full bg-gray-600 animate-pulse"></div>
+                  ) : (
+                    <img
+                      src={displayAvatarUrl || defaultAvatarSvg}
+                      alt="Avatar"
+                      className="w-full h-full rounded-full object-cover"
+                      onError={(e) => {
+                          e.target.src = defaultAvatarSvg;
+                      }}
+                    />
+                  )}
+                </div>
                 <div>
                   <div className="flex items-baseline">
                     <span className="font-bold text-lg mr-2 text-blue-400">{displayUsername}</span>
